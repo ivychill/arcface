@@ -1,4 +1,4 @@
-from data.data_pipe import de_preprocess, get_train_loader, get_val_data
+from data.data_pipe import de_preprocess, get_train_loader, get_val_data, get_test_loader
 from model import Backbone, Arcface, MobileFaceNet, Am_softmax, l2_norm
 from verifacation import evaluate
 import torch
@@ -8,36 +8,51 @@ from tqdm import tqdm
 from tensorboardX import SummaryWriter
 from matplotlib import pyplot as plt
 plt.switch_backend('agg')
-from utils import get_time, gen_plot, hflip_batch, separate_bn_paras
+from utils import get_time, gen_plot, hflip_batch, separate_bn_paras, extract_feature
 from PIL import Image
 from torchvision import transforms as trans
 import math
 import bcolz
 from pathlib import Path
+from collections import OrderedDict
+from identification import compute_rank1
+import os
+import scipy.io
+import xlwt
+from log import logger
+
+try:
+    from apex.fp16_utils import *
+    from apex import amp, optimizers
+    from apex.parallel import DistributedDataParallel
+except ImportError:  # will be 3.x series
+    print(
+        'This is not an error. If you want to use low precision, i.e., fp16, please install the apex with cuda support (https://github.com/NVIDIA/apex) and update pytorch to 1.0')
 
 class face_learner(object):
     def __init__(self, conf, inference=False):
         accuracy = 0.0
-        print(conf)
+        logger.debug(conf)
         if conf.use_mobilfacenet:
-            self.model = MobileFaceNet(conf.embedding_size).to(conf.device)
-            print('MobileFaceNet model generated')
+            # self.model = MobileFaceNet(conf.embedding_size).to(conf.device)
+            self.model = MobileFaceNet(conf.embedding_size).cuda()
+            logger.debug('MobileFaceNet model generated')
         else:
             self.model = Backbone(conf.net_depth, conf.drop_ratio, conf.net_mode).cuda()#.to(conf.device)
-            print('{}_{} model generated'.format(conf.net_mode, conf.net_depth))
+            logger.debug('{}_{} model generated'.format(conf.net_mode, conf.net_depth))
         if not inference:
             self.milestones = conf.milestones
+            logger.info('loading data...')
             self.loader, self.class_num = get_train_loader(conf)        
 
             self.writer = SummaryWriter(conf.log_path)
             self.step = 0
             self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num).cuda()
 
-            print('two model heads generated')
+            logger.debug('two model heads generated')
 
             paras_only_bn, paras_wo_bn = separate_bn_paras(self.model)
-            self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[conf.argsed]).cuda() #add line for distributed
-            #self.model.to(conf.device)
+
             if conf.use_mobilfacenet:
                 self.optimizer = optim.SGD([
                                     {'params': paras_wo_bn[:-1], 'weight_decay': 4e-5},
@@ -49,47 +64,68 @@ class face_learner(object):
                                     {'params': paras_wo_bn + [self.head.kernel], 'weight_decay': 5e-4},
                                     {'params': paras_only_bn}
                                 ], lr = conf.lr, momentum = conf.momentum)
-            #self.optimizer = torch.nn.parallel.DistributedDataParallel(optimizer,device_ids=[conf.argsed])
-            print(self.optimizer)
-#             self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=40, verbose=True)
+            # self.optimizer = torch.nn.parallel.DistributedDataParallel(optimizer,device_ids=[conf.argsed])
+            logger.debug('optimizer {}'.format(self.optimizer))
+            # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=40, verbose=True)
 
-            print('optimizers generated')
-            print(self.loader.dataset)    
+            if conf.fp16:
+                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O1")
+                self.model = DistributedDataParallel(self.model).cuda()
+            else:
+                self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[conf.argsed]).cuda() #add line for distributed
+
+            logger.debug('dataset {}'.format(self.loader.dataset))
             self.board_loss_every = len(self.loader)//100
             self.evaluate_every = len(self.loader)//10
             self.save_every = len(self.loader)//5
-            _path = r'/home/test/InsightFace_Pytorch_two/data/faces_emore'
-            self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(_path))#Path(self.loader.dataset.root).parent)
+            self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader.dataset.root).parent)
         else:
             self.threshold = conf.threshold
-    
+            self.loader, self.query_ds, self.gallery_ds = get_test_loader(conf)
+
     def save_state(self, conf, accuracy, to_save_folder=False, extra=None, model_only=False):
-        root_path = r'/home/test/InsightFace_Pytorch_two/' #add line
         if to_save_folder:
             save_path = conf.save_path
         else:
             save_path = conf.model_path
         torch.save(
-            self.model.state_dict(), root_path+str(save_path /
-            ('model_{}_accuracy:_{}_step:_{}_{}.pth'.format(get_time(), accuracy, self.step, extra)))) # add str()
+            self.model.state_dict(), save_path /
+                                     ('model_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step,
+                                                                                   extra)))
         if not model_only:
             torch.save(
-                self.head.state_dict(), root_path+str(save_path /
-                ('head_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step, extra))))# add str()
+                self.head.state_dict(), save_path /
+                                        ('head_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step,
+                                                                                     extra)))
             torch.save(
-                self.optimizer.state_dict(), root_path+str(save_path /
-                ('optimizer_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step, extra))))# add str()
-    
+                self.optimizer.state_dict(), save_path /
+                                             ('optimizer_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy,
+                                                                                               self.step, extra)))
+
+    def load_network(self, save_path):
+        state_dict = torch.load(save_path)
+        # create new OrderedDict that does not contain `module.`
+        new_state_dict = OrderedDict()
+        for k, v in state_dict.items():
+            # logger.debug('key {}'.format(k))
+            namekey = k[7:]
+            # logger.debug('key {}'.format(namekey))  # remove 'module.'
+            new_state_dict[namekey] = v
+        # load params
+        return new_state_dict
+
     def load_state(self, conf, fixed_str, from_save_folder=False, model_only=False):
         if from_save_folder:
             save_path = conf.save_path
         else:
-            save_path = conf.model_path            
-        self.model.load_state_dict(torch.load(root_path+str(save_path/'model_{}'.format(fixed_str))))# add str()
+            save_path = conf.model_path
+        # self.model.load_state_dict(torch.load(save_path / 'model_{}'.format(fixed_str)))
+        self.model.load_state_dict(self.load_network(save_path / 'model_{}'.format(fixed_str)))
+
         if not model_only:
-            self.head.load_state_dict(torch.load(root_path+str(save_path/'head_{}'.format(fixed_str))))# add str()
-            self.optimizer.load_state_dict(torch.load(root_path+str(save_path/'optimizer_{}'.format(fixed_str))))# add str()
-        
+            self.head.load_state_dict(torch.load(save_path / 'head_{}'.format(fixed_str)))
+            self.optimizer.load_state_dict(torch.load(save_path / 'optimizer_{}'.format(fixed_str)))
+
     def board_val(self, db_name, accuracy, best_threshold, roc_curve_tensor):
         self.writer.add_scalar('{}_accuracy'.format(db_name), accuracy, self.step)
         self.writer.add_scalar('{}_best_threshold'.format(db_name), best_threshold, self.step)
@@ -107,25 +143,113 @@ class face_learner(object):
                 batch = torch.tensor(carray[idx:idx + conf.batch_size])
                 if tta:
                     fliped = hflip_batch(batch)
-                    emb_batch = self.model(batch.to(conf.device)) + self.model(fliped.to(conf.device))
-                    embeddings[idx:idx + conf.batch_size] = l2_norm(emb_batch)
+                    emb_batch = self.model(batch.cuda()) + self.model(fliped.cuda())
+                    # emb_batch = self.model(batch.to(conf.device)) + self.model(fliped.to(conf.device))
+                    embeddings[idx:idx + conf.batch_size] = l2_norm(emb_batch).cpu()
                 else:
-                    embeddings[idx:idx + conf.batch_size] = self.model(batch.to(conf.device)).cpu()
+                    embeddings[idx:idx + conf.batch_size] = self.model(batch.cuda()).cpu()
+                    # embeddings[idx:idx + conf.batch_size] = self.model(batch.to(conf.device)).cpu()
                 idx += conf.batch_size
             if idx < len(carray):
                 batch = torch.tensor(carray[idx:])            
                 if tta:
                     fliped = hflip_batch(batch)
-                    emb_batch = self.model(batch.to(conf.device)) + self.model(fliped.to(conf.device))
+                    emb_batch = self.model(batch.cuda()) + self.model(fliped.cuda())
                     embeddings[idx:] = l2_norm(emb_batch)
                 else:
-                    embeddings[idx:] = self.model(batch.to(conf.device)).cpu()
+                    embeddings[idx:] = self.model(batch.cuda()).cpu()
         tpr, fpr, accuracy, best_thresholds = evaluate(embeddings, issame, nrof_folds)
         buf = gen_plot(fpr, tpr)
         roc_curve = Image.open(buf)
         roc_curve_tensor = trans.ToTensor()(roc_curve)
         return accuracy.mean(), best_thresholds.mean(), roc_curve_tensor
-    
+
+    # true top 1, false top 1, miss
+    def compute_true_false_miss(self, conf, log_dir, feat_path, tta):
+        def gen_distmat(qf, q_pids, gf, g_pids):
+            m, n = qf.shape[0], gf.shape[0]
+            logger.debug('query shape {}, gallery shape {}'.format(qf.shape, gf.shape))
+            # logger.debug('q_pids {}, g_pids {}'.format(q_pids, g_pids))
+            distmat = torch.pow(qf, 2).sum(dim=1, keepdim=True).expand(m, n) + \
+                      torch.pow(gf, 2).sum(dim=1, keepdim=True).expand(n, m).t()
+            distmat.addmm_(1, -2, qf, gf.t())
+            distmat = distmat.cpu().numpy()
+            return distmat
+
+        def distance(emb1, emb2):
+            diff = np.subtract(emb1, emb2)
+            dist = np.sum(np.square(diff), 1)
+            return dist
+
+        if conf.gen_feature:
+            with torch.no_grad():
+                query_feature, query_label = extract_feature(conf, self.model, self.loader['query']['dl'], tta)
+                gallery_feature, gallery_label = extract_feature(conf, self.model, self.loader['gallery']['dl'], tta)
+            # result = {'query_feature': query_feature.numpy(), 'query_label': query_label,
+            #     'gallery_feature': gallery_feature.numpy(), 'gallery_label': gallery_label}
+            result = {'query_feature': query_feature.numpy(), 'query_label': query_label.numpy(),
+                'gallery_feature': gallery_feature.numpy(), 'gallery_label': gallery_label.numpy()}
+            scipy.io.savemat(feat_path, result)
+
+        else:
+            result = scipy.io.loadmat(feat_path)
+            query_feature = torch.from_numpy(result['query_feature'])
+            query_label = torch.from_numpy(result['query_label'])[0]
+            gallery_feature = torch.from_numpy(result['gallery_feature'])
+            gallery_label = torch.from_numpy(result['gallery_label'])[0]
+
+        # np.set_printoptions(threshold=np.inf)
+        # logger.debug('query_label: {}'.format(query_label.numpy()))
+        # logger.debug('gallery_label: {}'.format(gallery_label.numpy()))
+        # feat = result['query_feature'][0:2]
+        # logger.debug('feat {}'.format(feat.shape))
+        # emb1 = np.repeat(feat, [3,1], axis=0)
+        # emb2 = result['gallery_feature'][0:4]
+        # dist = distance(emb1, emb2)
+        # logger.debug('distance {}'.format(dist))
+
+        distmat = gen_distmat(query_feature, query_label, gallery_feature, gallery_label)
+
+        # record txt
+        with open(os.path.join(log_dir, 'result.txt'),'at') as f:
+            f.write('%s\t%s\t%s\t%s\n' % ('threshold', 'acc', 'err', 'miss'))
+
+        # record excel
+        xls_file = xlwt.Workbook()
+        sheet_1 = xls_file.add_sheet('sheet_1', cell_overwrite_ok=True)
+        row = 0
+        path_excel = os.path.join(log_dir, 'result.xls')
+        sheet_title = ['threshold', 'acc', 'err', 'miss']
+        for i_sheet in range(len(sheet_title)):
+            sheet_1.write(row, i_sheet, sheet_title[i_sheet])
+        xls_file.save(path_excel)
+        row += 1
+
+        index = np.argsort(distmat)  # from small to large
+        max_index = index[:, 0]
+        # query_num = distmat.shape[0]
+        # logger.debug('distmat {}'.format(distmat[0:2,0:4]))
+        # for i in range(query_num):
+        #     logger.debug('query: {}, gallery: {}'.format(self.query_ds.imgs[i], self.gallery_ds.imgs[max_index[i]]))
+            # logger.debug('index[i] {}'.format(index[i]))
+            # logger.debug('distmat[i, max_index[i]]: {}'.format(distmat[i, max_index[i]]))
+            # logger.debug('distmat[i] {}'.format(distmat[i]))
+
+        thresholds = np.arange(0.8, 2, 0.02)
+        for threshold in thresholds:
+            acc, err, miss = compute_rank1(distmat, max_index, query_label, gallery_label, threshold)
+            # record txt
+            with open(os.path.join(log_dir, 'result.txt'),'at') as f:
+                f.write('%.6f\t%.6f\t%.6f\t%.6f\n' % (threshold, acc, err, miss))
+
+            # record excel
+            list_data = [threshold, acc, err, miss]
+            for i_1 in range(len(list_data)):
+                sheet_1.write(row, i_1, list_data[i_1])
+            xls_file.save(path_excel)
+            row += 1
+
+
     def find_lr(self,
                 conf,
                 init_value=1e-8,
@@ -189,10 +313,10 @@ class face_learner(object):
 
     def train(self, conf, epochs):
         self.model.train()
-        print(self.model)
+        logger.debug('model {}'.format(self.model))
         running_loss = 0.          
         for e in range(epochs):
-            print('epoch {} started'.format(e))
+            logger.debug('epoch {} started'.format(e))
             if e == self.milestones[0]:
                 self.schedule_lr()
             if e == self.milestones[1]:
@@ -209,7 +333,14 @@ class face_learner(object):
                 embeddings = self.model(imgs)
                 thetas = self.head(embeddings, labels)
                 loss = conf.ce_loss(thetas, labels)
-                loss.backward()
+
+                # loss.backward()
+                if conf.fp16:  # we use optimier to backward loss
+                    with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    loss.backward()
+
                 running_loss += loss.item()
                 print(loss.item())
                 self.optimizer.step()

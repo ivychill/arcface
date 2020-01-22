@@ -10,6 +10,7 @@ import torch
 from model import l2_norm
 import pdb
 import cv2
+from tqdm import tqdm
 
 def separate_bn_paras(modules):
     if not isinstance(modules, list):
@@ -123,6 +124,64 @@ def hflip_batch(imgs_tensor):
     for i, img_ten in enumerate(imgs_tensor):
         hfliped_imgs[i] = hflip(img_ten)
     return hfliped_imgs
+
+
+# def extract_feature(conf, model, loader, tta=False):
+#     features = torch.FloatTensor()
+#     gts = torch.LongTensor()
+#     for (inputs, labels) in tqdm(iter(loader)):
+#         gts = torch.cat((gts, labels), 0)
+#         ff = torch.FloatTensor(inputs.size(0), conf.embedding_size).zero_()
+#         if tta:
+#             for i in range(2):
+#                 if i == 1:
+#                     inputs = inputs.index_select(3, torch.arange(inputs.size(3) - 1, -1, -1).long())
+#                 input_img = inputs.to('cuda')
+#                 outputs = model(input_img)
+#                 f = outputs.data.cpu()
+#                 ff = ff + f
+#         else:
+#             input_img = inputs.to('cuda')
+#             outputs = model(input_img)
+#             ff = outputs.data.cpu()
+#
+#         fnorm = torch.norm(ff, p=2, dim=1, keepdim=True)
+#         ff = ff.div(fnorm.expand_as(ff))
+#         features = torch.cat((features, ff), 0)
+#
+#     return features, gts
+
+def extract_feature(conf, model, loader, tta=False):
+    features = torch.FloatTensor()
+    gts = torch.LongTensor()
+    for (inputs, labels) in tqdm(iter(loader)):
+        gts = torch.cat((gts, labels), 0)
+        if tta:
+            fliped = hflip_batch(inputs)
+            outputs = model(inputs.cuda()) + model(fliped.cuda())
+            feature = l2_norm(outputs).cpu()
+        else:
+            feature = model(inputs.cuda()).cpu()
+
+        features = torch.cat((features, feature), 0)
+
+    return features, gts
+
+# def extract_feature(conf, model, loader, tta=False):
+#     features = torch.FloatTensor()
+#     gts = []
+#     for (inputs, labels) in tqdm(iter(loader)):
+#         gts.extend(labels)
+#         if tta:
+#             fliped = hflip_batch(inputs)
+#             outputs = model(inputs.cuda()) + model(fliped.cuda())
+#             feature = l2_norm(outputs).cpu()
+#         else:
+#             feature = model(inputs.cuda()).cpu()
+#
+#         features = torch.cat((features, feature), 0)
+#
+#     return features, np.asarray(gts)
 
 def get_time():
     return (str(datetime.now())[:-10]).replace(' ','-').replace(':','-')

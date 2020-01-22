@@ -11,6 +11,7 @@ import pickle
 import torch
 import mxnet as mx
 from tqdm import tqdm
+from log import logger
 
 def de_preprocess(tensor):
     return tensor*0.5 + 0.5
@@ -21,7 +22,7 @@ def get_train_dataset(imgs_folder):
         trans.ToTensor(),
         trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
-    ds = ImageFolder(str(imgs_folder), train_transform) # 从这里开始就错了
+    ds = ImageFolder(str(imgs_folder), train_transform) # 锟斤拷锟斤拷锟斤开始锟酵达拷锟斤拷
     class_num = ds[-1][1] + 1
     return ds, class_num
 
@@ -47,7 +48,60 @@ def get_train_loader(conf):
         ds, class_num = get_train_dataset(conf.emore_folder/'imgs')
     train_sampler = torch.utils.data.distributed.DistributedSampler(ds) #add line
     loader = DataLoader(ds, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers, sampler = train_sampler)
-    return loader, class_num 
+    return loader, class_num
+
+def get_test_dataset(imgs_folder):
+    test_transform = trans.Compose([
+        trans.ToTensor(),
+        trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    ])
+    ds = ImageFolder(imgs_folder, test_transform)
+    # logger.debug('dataset: {}'.format(ds.class_to_idx))
+    class_num = ds[-1][1] + 1
+    return ds, class_num
+
+def get_test_loader(conf):
+    # logger.debug('query get_test_dataset')
+    # query_ds, query_class_num = get_test_dataset(conf.data_path/'test'/'shanghai_cam_dynamic_112_3rd')
+    # logger.debug('gallery get_test_dataset')
+    # gallery_ds, gallery_class_num = get_test_dataset(conf.data_path/'test'/'shanghai_cam_id_112_3rd')
+    query_ds, query_class_num = get_test_dataset(conf.data_path/'test'/'query_ms')
+    gallery_ds, gallery_class_num = get_test_dataset(conf.data_path/'test'/'gallery_ms')
+
+    # kc_id=conf.data_path/'test'/'kc_employee_id_112'
+    # kc_dynamic=conf.data_path/'test'/'kc_employee_dynamic_112'
+    # sh_id=conf.data_path/'test'/'shanghai_cam_id_112'
+    # sh_dynamic=conf.data_path/'test'/'shanghai_cam_dynamic_112'
+
+    # kc_id=conf.data_path/'test'/'gallery_ms'
+    # kc_dynamic=conf.data_path/'test'/'query_ms'
+    # sh_id=conf.data_path/'test'/'gallery_ms'
+    # sh_dynamic=conf.data_path/'test'/'query_ms'
+    
+    # kc_dynamic_ds, kc_dynamic_class_num = get_test_dataset(kc_dynamic)
+    # sh_dynamic_ds, sh_dynamic_class_num = get_test_dataset(sh_dynamic)
+    # for i,(url,label) in enumerate(sh_dynamic_ds.imgs):
+    #     sh_dynamic_ds.imgs[i] = (url, label + kc_dynamic_class_num)
+    # query_ds = ConcatDataset([kc_dynamic_ds, sh_dynamic_ds])
+    # query_class_num = kc_dynamic_class_num + sh_dynamic_class_num
+    #
+    # kc_id_ds, kc_id_class_num = get_test_dataset(kc_id)
+    # sh_id_ds, sh_id_class_num = get_test_dataset(sh_id)
+    # for i,(url,label) in enumerate(sh_id_ds.imgs):
+    #     sh_id_ds.imgs[i] = (url, label + kc_id_class_num)
+    # gallery_ds = ConcatDataset([kc_id_ds, sh_id_ds])
+    # gallery_class_num = kc_id_class_num + sh_id_class_num
+    
+    loader = {}
+    loader['query'] = {}
+    loader['query']['dl'] = DataLoader(query_ds, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers)
+    loader['query']['cn'] = query_class_num
+    loader['query']['len'] = len(query_ds)
+    loader['gallery'] = {}
+    loader['gallery']['dl'] = DataLoader(gallery_ds, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers)
+    loader['gallery']['cn'] = gallery_class_num
+    loader['gallery']['len'] = len(gallery_ds)
+    return loader, query_ds, gallery_ds
     
 def load_bin(path, rootdir, transform, image_size=[112,112]):
     if not rootdir.exists():
