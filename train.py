@@ -1,11 +1,22 @@
 from config import get_config
 from Learner import face_learner
 import argparse
+import random
+import numpy as np
 import torch
 import torch.distributed as dist # add line for dist
+import os
+import time
+from log import *
 # python train.py -net mobilefacenet -b 200 -w 4
 
 if __name__ == '__main__':
+    #### seed ####
+    np.random.seed(2020)
+    torch.manual_seed(2020)
+    torch.cuda.manual_seed_all(2020)
+    random.seed(2020)
+
     parser = argparse.ArgumentParser(description='for face verification')
     parser.add_argument("-e", "--epochs", help="training epochs", default=20, type=int)
     parser.add_argument("-net", "--net_mode", help="which network, [ir, ir_se, mobilefacenet]",default='ir_se', type=str)
@@ -17,9 +28,9 @@ if __name__ == '__main__':
     parser.add_argument('--local_rank', default=-1, type=int,
                     help='node rank for distributed training') # add line for distributed
     args = parser.parse_args()
-    print(args.local_rank)
+
     conf = get_config()
-    
+
     if args.net_mode == 'mobilefacenet':
         conf.use_mobilfacenet = True
     else:
@@ -32,6 +43,15 @@ if __name__ == '__main__':
     conf.num_workers = args.num_workers
     conf.data_mode = args.data_mode
     conf.argsed = args.local_rank
+
+    #### log ####
+    time_str = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+    log_dir = conf.log_path/time_str
+    if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
+        os.makedirs(log_dir)
+    set_logger(logger, log_dir)
+    logger.debug('start eval...')
+    logger.debug('local_rank {}'.format(args.local_rank))
+
     learner = face_learner(conf)
-    
     learner.train(conf, args.epochs)

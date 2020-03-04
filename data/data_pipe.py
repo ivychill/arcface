@@ -11,6 +11,7 @@ import pickle
 import torch
 import mxnet as mx
 from tqdm import tqdm
+from log import logger
 
 def de_preprocess(tensor):
     return tensor*0.5 + 0.5
@@ -21,7 +22,7 @@ def get_train_dataset(imgs_folder):
         trans.ToTensor(),
         trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
-    ds = ImageFolder(str(imgs_folder), train_transform) # 从这里开始就错了
+    ds = ImageFolder(str(imgs_folder), train_transform) # 锟斤拷锟斤拷锟斤开始锟酵达拷锟斤拷
     class_num = ds[-1][1] + 1
     return ds, class_num
 
@@ -47,7 +48,32 @@ def get_train_loader(conf):
         ds, class_num = get_train_dataset(conf.emore_folder/'imgs')
     train_sampler = torch.utils.data.distributed.DistributedSampler(ds) #add line
     loader = DataLoader(ds, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers, sampler = train_sampler)
-    return loader, class_num 
+    return loader, class_num
+
+def get_test_dataset(imgs_folder):
+    test_transform = trans.Compose([
+        trans.ToTensor(),
+        trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    ])
+    ds = ImageFolder(imgs_folder, test_transform)
+    # logger.debug('dataset: {}, {}'.format(len(ds), ds))
+    class_num = ds[-1][1] + 1
+    return ds, class_num
+
+def get_test_loader(conf):
+    query_ds, query_class_num = get_test_dataset(conf.query_kc_folder)
+    gallery_ds, gallery_class_num = get_test_dataset(conf.gallery_kc_folder)
+    loader = {}
+    loader['query'] = {}
+    loader['query']['dl'] = DataLoader(query_ds, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers)
+    loader['query']['cn'] = query_class_num
+    loader['query']['len'] = len(query_ds)
+    loader['gallery'] = {}
+    loader['gallery']['dl'] = DataLoader(gallery_ds, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers)
+    loader['gallery']['cn'] = gallery_class_num
+    loader['gallery']['len'] = len(gallery_ds)
+    # logger.debug('loader: {}'.format(loader))
+    return loader
     
 def load_bin(path, rootdir, transform, image_size=[112,112]):
     if not rootdir.exists():
