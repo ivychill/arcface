@@ -18,8 +18,8 @@ if __name__ == '__main__':
     random.seed(2020)
 
     parser = argparse.ArgumentParser(description='for face verification')
-    parser.add_argument("-e", "--epochs", help="training epochs", default=20, type=int)
-    parser.add_argument("-net", "--net_mode", help="which network, [ir, ir_se, mobilefacenet]",default='ir_se', type=str)
+    parser.add_argument("-e", "--epochs", help="training epochs", default=100, type=int)
+    parser.add_argument("-net", "--net_mode", help="which network, [ir, ir_se, mobilefacenet]", default='ir_se', type=str)
     parser.add_argument("-depth", "--net_depth", help="how many layers [50,100,152]", default=50, type=int)
     parser.add_argument('-lr','--lr',help='learning rate',default=1e-1, type=float)
     parser.add_argument("-b", "--batch_size", help="batch_size", default=96, type=int)
@@ -27,6 +27,10 @@ if __name__ == '__main__':
     parser.add_argument("-d", "--data_mode", help="use which database, [vgg, ms1m, emore, concat]",default='emore', type=str)
     parser.add_argument('--local_rank', default=-1, type=int,
                     help='node rank for distributed training') # add line for distributed
+    parser.add_argument('--fp16', action='store_true',
+                        help='use float16 instead of float32, which will save about 50% memory')
+    parser.add_argument('--resume', action='store_true',
+                        help='resume from previous model via load_state_dict')
     args = parser.parse_args()
 
     conf = get_config()
@@ -43,14 +47,18 @@ if __name__ == '__main__':
     conf.num_workers = args.num_workers
     conf.data_mode = args.data_mode
     conf.argsed = args.local_rank
+    conf.local_rank = args.local_rank
+    conf.fp16 = args.fp16
+
+    conf.resume = args.resume
 
     #### log ####
-    time_str = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+    time_str = time.strftime("%Y%m%d_%H%M", time.localtime())
     log_dir = conf.log_path/time_str
-    if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
-        os.makedirs(log_dir)
+    # if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
+    #     os.makedirs(log_dir, exist_ok=True)
     set_logger(logger, log_dir)
-    logger.debug('start eval...')
+    logger.debug('start train...')
     logger.debug('local_rank {}'.format(args.local_rank))
 
     learner = face_learner(conf)

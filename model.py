@@ -4,6 +4,7 @@ import torch
 from collections import namedtuple
 import math
 import pdb
+from config import get_config
 
 ##################################  Original Arcface Model #############################################################
 
@@ -264,8 +265,12 @@ class Arcface(Module):
         cos_theta_2 = torch.pow(cos_theta, 2)
         sin_theta_2 = 1 - cos_theta_2
         sin_theta = torch.sqrt(sin_theta_2)
-        # cos_theta_m = (cos_theta * self.cos_m - sin_theta * self.sin_m)
-        cos_theta_m = (cos_theta * self.cos_m - sin_theta * self.sin_m).half()
+        conf = get_config()
+        if conf.fp16:
+            cos_theta_m = (cos_theta * self.cos_m - sin_theta * self.sin_m).half()
+        else:
+            cos_theta_m = (cos_theta * self.cos_m - sin_theta * self.sin_m)
+
         # this condition controls the theta+m should in range [0, pi]
         #      0<=theta+m<=pi
         #     -m<=theta<=pi-m

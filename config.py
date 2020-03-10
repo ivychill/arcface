@@ -44,7 +44,8 @@ def get_config(training = True):
 #         conf.num_workers = 4 # when batchsize is 200
         conf.num_workers = 3
         conf.ce_loss = CrossEntropyLoss()
-        conf.fp16 = True
+        conf.fp16 = False
+
 #--------------------Inference Config ------------------------
     else:
         conf.facebank_path = conf.data_path/'facebank'

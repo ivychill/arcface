@@ -47,3 +47,4 @@ core
 *.pt
 *.pth
 *.json
+.*.sw*

@@ -75,6 +75,7 @@ def verify(learner):
     # print('lfw - accuray:{}, threshold:{}'.format(accuracy, best_threshold))
     # trans.ToPILImage()(roc_curve_tensor)
 
+
 def identify(learner, conf, log_dir, feat_path, tta):
     learner.compute_true_false_miss(conf, log_dir, feat_path, tta)
 
@@ -104,15 +105,15 @@ if __name__ == '__main__':
     parser.add_argument("-c", "--score", help="whether show the confidence score",action="store_true")
     args = parser.parse_args()
 
-    # learner = face_learner(conf, inference=True)
-    # learner.load_state(conf, 'ir_se50_kc.pth', model_only=True, from_save_folder=True)
+    learner = face_learner(conf, inference=True)
+    learner.load_state(conf, 'ir_se50.pth', model_only=True, from_save_folder=True)
     # verify(learner)
 
     # conf.use_mobilfacenet = True
-    learner = face_learner(conf, inference=True)
-    learner.load_state(conf, 'mobilefacenet.pth', model_only=True, from_save_folder=True)
-    verify(learner)
+    # learner = face_learner(conf, inference=True)
+    # learner.load_state(conf, 'mobilefacenet.pth', True, True)
+    # verify(learner)
 
-    # conf.gen_feature = False
-    # feat_path = conf.mat_path/'feature.mat'
-    # identify(learner, conf, log_dir, feat_path, args.tta)
+    conf.gen_feature = True
+    feat_path = conf.mat_path/'feature.mat'
+    identify(learner, conf, log_dir, feat_path, args.tta)

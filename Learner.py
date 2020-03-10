@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 from data.data_pipe import de_preprocess, get_train_loader, get_val_data, get_test_loader
 from model import Backbone, Arcface, MobileFaceNet, Am_softmax, l2_norm
 from verifacation import evaluate
@@ -76,31 +78,45 @@ class face_learner(object):
 
             logger.debug('dataset {}'.format(self.loader.dataset))
             self.board_loss_every = len(self.loader)//100
-            self.evaluate_every = len(self.loader)//10
+            self.evaluate_every = len(self.loader)//5
             self.save_every = len(self.loader)//5
             self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader.dataset.root).parent)
         else:
             self.threshold = conf.threshold
-            self.loader = get_test_loader(conf)
+            self.loader, self.query_ds, self.gallery_ds = get_test_loader(conf)
 
-    def save_state(self, conf, accuracy, to_save_folder=False, extra=None, model_only=False):
+    def save_state(self, conf, epoch, accuracy, to_save_folder=False, extra=None, model_only=False):
         if to_save_folder:
             save_path = conf.save_path
         else:
             save_path = conf.model_path
         torch.save(
+            # self.model.state_dict(), save_path /
+            #                          ('model_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step,
+            #                                                                        extra)))
             self.model.state_dict(), save_path /
-                                     ('model_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step,
+                                     ('model_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
                                                                                    extra)))
         if not model_only:
             torch.save(
-                self.head.state_dict(), save_path /
-                                        ('head_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step,
-                                                                                     extra)))
+                # self.head.state_dict(), save_path /
+                #                         ('head_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step,
+                #                                                                      extra)))
+                self.model.state_dict(), save_path /
+                                         ('head_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
+                                                                                       extra)))
             torch.save(
-                self.optimizer.state_dict(), save_path /
-                                             ('optimizer_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy,
-                                                                                               self.step, extra)))
+                # self.optimizer.state_dict(), save_path /
+                #                              ('optimizer_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy,
+                #                                                                                self.step, extra)))
+                self.model.state_dict(), save_path /
+                                         ('optimizer_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
+                                                                                extra)))
+            # torch.save(
+            #     amp.state_dict(), save_path /
+            #                              ('amp_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
+            #                                                                     extra)))
+
 
     def load_network(self, save_path):
         state_dict = torch.load(save_path)
@@ -119,12 +135,15 @@ class face_learner(object):
             save_path = conf.save_path
         else:
             save_path = conf.model_path
-        # self.model.load_state_dict(torch.load(save_path / 'model_{}'.format(fixed_str)))
-        self.model.load_state_dict(self.load_network(save_path / 'model_{}'.format(fixed_str)))
+        if conf.resume:
+            self.model.load_state_dict(torch.load(save_path / 'model_{}'.format(fixed_str)))
+        else:
+            self.model.load_state_dict(self.load_network(save_path / 'model_{}'.format(fixed_str)))
 
         if not model_only:
             self.head.load_state_dict(torch.load(save_path / 'head_{}'.format(fixed_str)))
             self.optimizer.load_state_dict(torch.load(save_path / 'optimizer_{}'.format(fixed_str)))
+            # amp.load_state_dict(torch.load(save_path / 'amp_{}'.format(fixed_str)))
 
     def board_val(self, db_name, accuracy, best_threshold, roc_curve_tensor):
         self.writer.add_scalar('{}_accuracy'.format(db_name), accuracy, self.step)
@@ -168,18 +187,26 @@ class face_learner(object):
     def compute_true_false_miss(self, conf, log_dir, feat_path, tta):
         def gen_distmat(qf, q_pids, gf, g_pids):
             m, n = qf.shape[0], gf.shape[0]
-            # logger.debug('query shape {}, gallery shape {}'.format(qf.shape, gf.shape))
-            # logger.debug('q_pids {}, g_pids {}'.format(q_pids.shape, g_pids.shape))
+            logger.debug('query shape {}, gallery shape {}'.format(qf.shape, gf.shape))
+            # logger.debug('q_pids {}, g_pids {}'.format(q_pids, g_pids))
             distmat = torch.pow(qf, 2).sum(dim=1, keepdim=True).expand(m, n) + \
                       torch.pow(gf, 2).sum(dim=1, keepdim=True).expand(n, m).t()
             distmat.addmm_(1, -2, qf, gf.t())
             distmat = distmat.cpu().numpy()
             return distmat
 
+        def distance(emb1, emb2):
+            diff = np.subtract(emb1, emb2)
+            dist = np.sum(np.square(diff), 1)
+            return dist
+
         if conf.gen_feature:
             with torch.no_grad():
                 query_feature, query_label = extract_feature(conf, self.model, self.loader['query']['dl'], tta)
                 gallery_feature, gallery_label = extract_feature(conf, self.model, self.loader['gallery']['dl'], tta)
+            # result = {'query_feature': query_feature.numpy(), 'query_label': query_label,
+            #     'gallery_feature': gallery_feature.numpy(), 'gallery_label': gallery_label}
+
             result = {'query_feature': query_feature.numpy(), 'query_label': query_label.numpy(),
                 'gallery_feature': gallery_feature.numpy(), 'gallery_label': gallery_label.numpy()}
             scipy.io.savemat(feat_path, result)
@@ -191,24 +218,54 @@ class face_learner(object):
             gallery_feature = torch.from_numpy(result['gallery_feature'])
             gallery_label = torch.from_numpy(result['gallery_label'])[0]
 
-        dismat = gen_distmat(query_feature, query_label, gallery_feature, gallery_label)
 
+        # np.set_printoptions(threshold=np.inf)
+        # logger.debug('query_label: {}'.format(query_label.numpy()))
+        # logger.debug('gallery_label: {}'.format(gallery_label.numpy()))
+        # feat = result['query_feature'][0:2]
+        # logger.debug('feat {}'.format(feat.shape))
+        # emb1 = np.repeat(feat, [3,1], axis=0)
+        # emb2 = result['gallery_feature'][0:4]
+        # dist = distance(emb1, emb2)
+        # logger.debug('distance {}'.format(dist))
+
+        distmat = gen_distmat(query_feature, query_label, gallery_feature, gallery_label)
+
+        # record txt
+        with open(os.path.join(log_dir, 'result.txt'),'at') as f:
+            f.write('%s\t%s\t%s\t%s\n' % ('threshold', 'acc', 'err', 'miss'))
+
+        # record excel
         xls_file = xlwt.Workbook()
         sheet_1 = xls_file.add_sheet('sheet_1', cell_overwrite_ok=True)
         row = 0
-        path_excel = os.path.join(log_dir, 'indicator.xls')
+        path_excel = os.path.join(log_dir, 'result.xls')
+
         sheet_title = ['threshold', 'acc', 'err', 'miss']
         for i_sheet in range(len(sheet_title)):
             sheet_1.write(row, i_sheet, sheet_title[i_sheet])
         xls_file.save(path_excel)
         row += 1
 
-        # np.set_printoptions(threshold=np.inf)
-        # logger.debug('distmat: {}'.format(dismat))
 
-        thresholds = np.arange(0.4, 3.2, 0.02)
+        index = np.argsort(distmat)  # from small to large
+        max_index = index[:, 0]
+        # query_num = distmat.shape[0]
+        # logger.debug('distmat {}'.format(distmat[0:2,0:4]))
+        # for i in range(query_num):
+        #     logger.debug('query: {}, gallery: {}'.format(self.query_ds.imgs[i], self.gallery_ds.imgs[max_index[i]]))
+            # logger.debug('index[i] {}'.format(index[i]))
+            # logger.debug('distmat[i, max_index[i]]: {}'.format(distmat[i, max_index[i]]))
+            # logger.debug('distmat[i] {}'.format(distmat[i]))
+
+        thresholds = np.arange(0.8, 2, 0.02)
         for threshold in thresholds:
-            acc, err, miss = compute_rank1(dismat, query_label, gallery_label, threshold)
+            acc, err, miss = compute_rank1(distmat, max_index, query_label, gallery_label, threshold)
+            # record txt
+            with open(os.path.join(log_dir, 'result.txt'),'at') as f:
+                f.write('%.6f\t%.6f\t%.6f\t%.6f\n' % (threshold, acc, err, miss))
+
+            # record excel
             list_data = [threshold, acc, err, miss]
             for i_1 in range(len(list_data)):
                 sheet_1.write(row, i_1, list_data[i_1])
@@ -279,15 +336,21 @@ class face_learner(object):
 
     def train(self, conf, epochs):
         self.model.train()
-        logger.debug('model {}'.format(self.model))
-        running_loss = 0.          
-        for e in range(epochs):
-            logger.debug('epoch {} started'.format(e))
-            if e == self.milestones[0]:
+        # logger.debug('model {}'.format(self.model))
+        running_loss = 0.
+
+        # 断点加载训练
+        if conf.resume:
+            logger.debug('resume...')
+            self.load_state(conf, 'ir_se50.pth', from_save_folder=True)
+
+        for epoch in range(epochs):
+            logger.debug('epoch {} started'.format(epoch))
+            if epoch == self.milestones[0]:
                 self.schedule_lr()
-            if e == self.milestones[1]:
+            if epoch == self.milestones[1]:
                 self.schedule_lr()      
-            if e == self.milestones[2]:
+            if epoch == self.milestones[2]:
                 self.schedule_lr()                
             #for i, (imgs, labels) in tqdm(enumerate(self.loader)):  
             #for imgs, labels in enumerate(self.loader):             
@@ -308,30 +371,30 @@ class face_learner(object):
                     loss.backward()
 
                 running_loss += loss.item()
-                print(loss.item())
+                # print(loss.item())
                 self.optimizer.step()
                 
                 if self.step % self.board_loss_every == 0 and self.step != 0: #comment line
-                #if self.step != 0: # add line
                     loss_board = running_loss / self.board_loss_every
                     self.writer.add_scalar('train_loss', loss_board, self.step)
                     running_loss = 0.
                 
                 if self.step % self.evaluate_every == 0 and self.step != 0:  #comment line
-                #if self.step != 0: # add line
                     accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.agedb_30, self.agedb_30_issame)
                     self.board_val('agedb_30', accuracy, best_threshold, roc_curve_tensor)
                     accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.lfw, self.lfw_issame)
                     self.board_val('lfw', accuracy, best_threshold, roc_curve_tensor)
                     accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.cfp_fp, self.cfp_fp_issame)
                     self.board_val('cfp_fp', accuracy, best_threshold, roc_curve_tensor)
+                    logger.debug('epoch {}, step {}, loss {}, acc {}'.format(epoch, self.step, loss.item(), accuracy))
                     self.model.train()
-                if self.step % self.save_every == 0 and self.step != 0:
-                    self.save_state(conf, accuracy)
+                # if conf.local_rank == 0 and epoch >= 10 and self.step % self.save_every == 0 and self.step != 0:
+                if conf.local_rank == 0 and self.step % self.save_every == 0 and self.step != 0:
+                    self.save_state(conf, epoch, accuracy)
                     
                 self.step += 1
                 
-        self.save_state(conf, accuracy, to_save_folder=True, extra='final')
+        self.save_state(conf, epoch, accuracy, to_save_folder=True, extra='final')
 
     def schedule_lr(self):
         for params in self.optimizer.param_groups:                 

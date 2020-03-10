@@ -72,14 +72,11 @@ def compute_mAP(qf, q_pids, gf, g_pids):
 
     return cmc, mAP
 
-
-def compute_rank1(distmat, q_pids, g_pids, threshold):
-    # np.set_printoptions(threshold=np.inf)
-    logger.debug('q_pids: {} {}'.format(len(q_pids), q_pids))
-    logger.debug('g_pids: {} {}'.format(len(g_pids), g_pids))
-    index = np.argsort(distmat)  # from small to large
+def compute_rank1(distmat, max_index, q_pids, g_pids, threshold):
+    # index = np.argsort(distmat)  # from small to large
+    # max_index = index[:, 0]
     query_num = distmat.shape[0]
-    max_index = index[:, 0]
+
     acc = 0
     err = 0
     miss = 0
@@ -94,7 +91,7 @@ def compute_rank1(distmat, q_pids, g_pids, threshold):
         else:
             miss += 1
 
-    logger.debug('threshold {} acc {}, err {}, miss {}'.format(threshold, acc, err, miss))
+    logger.debug('threshold {:.2f}, acc {}, err {}, miss {}'.format(threshold, acc, err, miss))
     acc = acc/float(query_num)
     err = err/float(query_num)
     miss = miss/float(query_num)
