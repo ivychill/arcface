@@ -67,19 +67,18 @@ class face_learner(object):
                                     {'params': paras_only_bn}
                                 ], lr = conf.lr, momentum = conf.momentum)
             # self.optimizer = torch.nn.parallel.DistributedDataParallel(optimizer,device_ids=[conf.argsed])
-            logger.debug('optimizer {}'.format(self.optimizer))
             # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=40, verbose=True)
 
             if conf.fp16:
-                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O1")
+                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O2")
                 self.model = DistributedDataParallel(self.model).cuda()
             else:
                 self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[conf.argsed]).cuda() #add line for distributed
 
             logger.debug('dataset {}'.format(self.loader.dataset))
             self.board_loss_every = len(self.loader)//100
-            self.evaluate_every = len(self.loader)//5
-            self.save_every = len(self.loader)//5
+            self.evaluate_every = len(self.loader)//4
+            self.save_every = len(self.loader)//4
             self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader.dataset.root).parent)
         else:
             self.threshold = conf.threshold
@@ -143,6 +142,7 @@ class face_learner(object):
         if not model_only:
             self.head.load_state_dict(torch.load(save_path / 'head_{}'.format(fixed_str)))
             self.optimizer.load_state_dict(torch.load(save_path / 'optimizer_{}'.format(fixed_str)))
+            logger.info('load optimizer {}'.format(self.optimizer))
             # amp.load_state_dict(torch.load(save_path / 'amp_{}'.format(fixed_str)))
 
     def board_val(self, db_name, accuracy, best_threshold, roc_curve_tensor):
@@ -217,7 +217,6 @@ class face_learner(object):
             query_label = torch.from_numpy(result['query_label'])[0]
             gallery_feature = torch.from_numpy(result['gallery_feature'])
             gallery_label = torch.from_numpy(result['gallery_label'])[0]
-
 
         # np.set_printoptions(threshold=np.inf)
         # logger.debug('query_label: {}'.format(query_label.numpy()))
@@ -344,6 +343,7 @@ class face_learner(object):
             logger.debug('resume...')
             self.load_state(conf, 'ir_se50.pth', from_save_folder=True)
 
+        logger.debug('optimizer {}'.format(self.optimizer))
         for epoch in range(epochs):
             logger.debug('epoch {} started'.format(epoch))
             if epoch == self.milestones[0]:
@@ -386,10 +386,11 @@ class face_learner(object):
                     self.board_val('lfw', accuracy, best_threshold, roc_curve_tensor)
                     accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.cfp_fp, self.cfp_fp_issame)
                     self.board_val('cfp_fp', accuracy, best_threshold, roc_curve_tensor)
-                    logger.debug('epoch {}, step {}, loss {}, acc {}'.format(epoch, self.step, loss.item(), accuracy))
+                    # logger.debug('optimizer {}'.format(self.optimizer))
+                    logger.debug('epoch {}, step {}, loss {:.4f}, acc {:.4f}'.format(epoch, self.step, loss.item(), accuracy))
                     self.model.train()
-                # if conf.local_rank == 0 and epoch >= 10 and self.step % self.save_every == 0 and self.step != 0:
-                if conf.local_rank == 0 and self.step % self.save_every == 0 and self.step != 0:
+                if conf.local_rank == 0 and epoch >= 10 and self.step % self.save_every == 0 and self.step != 0:
+                # if conf.local_rank == 0 and self.step % self.save_every == 0 and self.step != 0:
                     self.save_state(conf, epoch, accuracy)
                     
                 self.step += 1
@@ -399,7 +400,7 @@ class face_learner(object):
     def schedule_lr(self):
         for params in self.optimizer.param_groups:                 
             params['lr'] /= 10
-        print(self.optimizer)
+        logger.debug('optimizer {}'.format(self.optimizer))
     
     def infer(self, conf, faces, target_embs, tta=False):
         '''

@@ -44,7 +44,7 @@ def get_config(training = True):
 #         conf.num_workers = 4 # when batchsize is 200
         conf.num_workers = 3
         conf.ce_loss = CrossEntropyLoss()
-        conf.fp16 = False
+        conf.fp16 = True
 
 #--------------------Inference Config ------------------------
     else:

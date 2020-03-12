@@ -103,10 +103,13 @@ if __name__ == '__main__':
     parser.add_argument("-u", "--update", help="whether perform update the facebank",action="store_true")
     parser.add_argument("-tta", "--tta", help="whether test time augmentation",action="store_true")
     parser.add_argument("-c", "--score", help="whether show the confidence score",action="store_true")
+    parser.add_argument('--resume', action='store_true',
+                        help='resume from previous model via load_state_dict')
     args = parser.parse_args()
+    conf.resume = args.resume
 
     learner = face_learner(conf, inference=True)
-    learner.load_state(conf, 'ir_se50.pth', model_only=True, from_save_folder=True)
+    learner.load_state(conf, 'ir_se50_pre.pth', model_only=True, from_save_folder=True)
     # verify(learner)
 
     # conf.use_mobilfacenet = True

@@ -1,6 +1,7 @@
 import os
 from shutil import copyfile, copytree, rmtree
 import random
+import numpy as np
 
 def dir_per_person(base, src, dst):
     os.makedirs(os.path.join(base, dst), exist_ok=True)
@@ -128,6 +129,37 @@ def rm_dirty_file(base, subdir, dirty_list):
             rm_count += 1
     print('rm {} dirty persons from {}'.format(rm_count, subdir))
 
+def split_train_test(base, src_from, src_to_train, src_to_test, dst_from, dst_to_train, dst_to_test, n):
+    if os.path.exists(os.path.join(base, src_to_train)):
+        rmtree(os.path.join(base, src_to_train))
+    os.makedirs(os.path.join(base, src_to_train))
+    if os.path.exists(os.path.join(base, src_to_test)):
+        rmtree(os.path.join(base, src_to_test))
+    os.makedirs(os.path.join(base, src_to_test))
+    if os.path.exists(os.path.join(base, dst_to_train)):
+        rmtree(os.path.join(base, dst_to_train))
+    os.makedirs(os.path.join(base, dst_to_train))
+    if os.path.exists(os.path.join(base, dst_to_test)):
+        rmtree(os.path.join(base, dst_to_test))
+    os.makedirs(os.path.join(base, dst_to_test))
+
+    src_persons = os.listdir(os.path.join(base, src_from))
+    random.shuffle(src_persons)
+
+    test_size = int(np.floor(1.0/n * len(src_persons)))
+    print('test_size:', test_size)
+
+    test_persons = src_persons[:test_size]
+    for person in test_persons:
+        # print('test: ', person)
+        copytree(os.path.join(base, src_from, person), os.path.join(base, src_to_test, person))
+        copytree(os.path.join(base, dst_from, person), os.path.join(base, dst_to_test, person))
+
+    train_persons = src_persons[test_size:]
+    for person in train_persons:
+        # print('train: ', person)
+        copytree(os.path.join(base, src_from, person), os.path.join(base, src_to_train, person))
+        copytree(os.path.join(base, dst_from, person), os.path.join(base, dst_to_train, person))
 
 if __name__ == '__main__':
     # base = '/srv/dataset/test'
@@ -163,18 +195,18 @@ if __name__ == '__main__':
     # rm_empty(base, src)
     # rm_empty(base, dst)
     # rm_except_intersection(base, src, dst)
-    #
-    # src = 'shanghai_cam_id_3rd_112'
-    # dst = 'shanghai_cam_dynamic_3rd_112'
+
+    # src = 'shanghai_cam_id_112'
+    # dst = 'shanghai_cam_dynamic_112'
     # rm_empty(base, src)
     # rm_empty(base, dst)
     # rm_except_intersection(base, src, dst)
 
-    src = 'shanghai_cam_id_3rd_112'
-    dst = 'shanghai_cam_dynamic_3rd_112'
-    dirty_list = 'data/dirty_list.txt'
-    rm_dirty_dir(base, src, dirty_list)
-    rm_dirty_dir(base, dst, dirty_list)
+    # src = 'shanghai_cam_id_112'
+    # dst = 'shanghai_cam_dynamic_112'
+    # dirty_list = 'data/dirty_list.txt'
+    # rm_dirty_dir(base, src, dirty_list)
+    # rm_dirty_dir(base, dst, dirty_list)
 
     # src = '42w_112/shanghai_important_42w'
     # dirty_list = 'data/dirty_list.txt'
@@ -183,3 +215,11 @@ if __name__ == '__main__':
     # src = '42w_112/shanghai_important_42w'
     # dst = '10w_112/shanghai_important_42w'
     # select_nth_file(base, src, dst, 4)
+
+    src_from = 'shanghai_cam_id_112'
+    src_to_train = 'shanghai_cam_id_112_train_6k'
+    src_to_test = 'shanghai_cam_id_112_test_1k'
+    dst_from = 'shanghai_cam_dynamic_112'
+    dst_to_train = 'shanghai_cam_dynamic_112_train_6k'
+    dst_to_test = 'shanghai_cam_dynamic_112_test_1k'
+    split_train_test(base, src_from, src_to_train, src_to_test, dst_from, dst_to_train, dst_to_test, 7)

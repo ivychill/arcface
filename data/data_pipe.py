@@ -61,12 +61,10 @@ def get_test_dataset(imgs_folder):
     return ds, class_num
 
 def get_test_loader(conf):
-    # logger.debug('query get_test_dataset')
-    # query_ds, query_class_num = get_test_dataset(conf.data_path/'test'/'shanghai_cam_dynamic_112_3rd')
-    # logger.debug('gallery get_test_dataset')
-    # gallery_ds, gallery_class_num = get_test_dataset(conf.data_path/'test'/'shanghai_cam_id_112_3rd')
-    query_ds, query_class_num = get_test_dataset(conf.data_path/'test'/'query_ms')
-    gallery_ds, gallery_class_num = get_test_dataset(conf.data_path/'test'/'gallery_ms')
+    # query_ds, query_class_num = get_test_dataset(conf.data_path/'test'/'shanghai_cam_dynamic_3rd_112')
+    # gallery_ds, gallery_class_num = get_test_dataset(conf.data_path/'test'/'shanghai_cam_id_3rd_112')
+    query_ds, query_class_num = get_test_dataset(conf.data_path/'test'/'shanghai_cam_dynamic_112')
+    gallery_ds, gallery_class_num = get_test_dataset(conf.data_path/'test'/'shanghai_cam_id_112')
 
     # kc_id=conf.data_path/'test'/'kc_employee_id_112'
     # kc_dynamic=conf.data_path/'test'/'kc_employee_dynamic_112'
