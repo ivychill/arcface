@@ -17,7 +17,7 @@ import math
 import bcolz
 from pathlib import Path
 from collections import OrderedDict
-from identification import compute_rank1
+from identification import compute_rank1, DataPath
 import os
 import scipy.io
 import xlwt
@@ -257,9 +257,16 @@ class face_learner(object):
             # logger.debug('distmat[i, max_index[i]]: {}'.format(distmat[i, max_index[i]]))
             # logger.debug('distmat[i] {}'.format(distmat[i]))
 
-        thresholds = np.arange(0.8, 2, 0.02)
+        query_list_file = 'data/probe.txt'
+        gallery_list_file = 'data/gallery.txt'
+        err_rank1 = os.path.join(log_dir, 'err_rank1.txt')
+        data_path = DataPath(query_list_file, gallery_list_file)
+        with open(err_rank1,'at') as f:
+            f.write('%s\t\t\t%s\n' % ('query', 'gallery'))
+
+        thresholds = np.arange(0.4, 2, 0.01)
         for threshold in thresholds:
-            acc, err, miss = compute_rank1(distmat, max_index, query_label, gallery_label, threshold)
+            acc, err, miss = compute_rank1(distmat, max_index, query_label, gallery_label, threshold, data_path, err_rank1)
             # record txt
             with open(os.path.join(log_dir, 'result.txt'),'at') as f:
                 f.write('%.6f\t%.6f\t%.6f\t%.6f\n' % (threshold, acc, err, miss))
@@ -346,11 +353,12 @@ class face_learner(object):
         logger.debug('optimizer {}'.format(self.optimizer))
         for epoch in range(epochs):
             logger.debug('epoch {} started'.format(epoch))
-            if epoch == self.milestones[0]:
-                self.schedule_lr()
-            if epoch == self.milestones[1]:
-                self.schedule_lr()      
-            if epoch == self.milestones[2]:
+            # if epoch == self.milestones[0]:
+            #     self.schedule_lr()
+            # if epoch == self.milestones[1]:
+            #     self.schedule_lr()
+            # if epoch == self.milestones[2]:
+            if epoch in self.milestones:
                 self.schedule_lr()                
             #for i, (imgs, labels) in tqdm(enumerate(self.loader)):  
             #for imgs, labels in enumerate(self.loader):             

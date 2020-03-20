@@ -86,6 +86,19 @@ if __name__ == '__main__':
     torch.cuda.manual_seed_all(2019)
     random.seed(2019)
 
+    parser = argparse.ArgumentParser(description='for face verification')
+    parser.add_argument("-net", "--net_mode", help="which network, [ir, ir_se, mobilefacenet]", default='ir_se', type=str)
+    parser.add_argument("-depth", "--net_depth", help="how many layers [50,100,152]", default=50, type=int)
+    parser.add_argument("-s", "--save", help="whether save",action="store_true")
+    parser.add_argument('-th','--threshold',help='threshold to decide identical faces',default=1.54, type=float)
+    parser.add_argument("-u", "--update", help="whether perform update the facebank",action="store_true")
+    parser.add_argument("-tta", "--tta", help="whether test time augmentation",action="store_true")
+    parser.add_argument("-c", "--score", help="whether show the confidence score",action="store_true")
+    parser.add_argument('--resume', action='store_true',
+                        help='resume from previous model via load_state_dict')
+
+    args = parser.parse_args()
+
     # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
     conf = get_config(training=False)
 
@@ -97,26 +110,22 @@ if __name__ == '__main__':
     set_logger(logger, log_dir)
     logger.debug('start eval...')
 
-    parser = argparse.ArgumentParser(description='for face verification')
-    parser.add_argument("-s", "--save", help="whether save",action="store_true")
-    parser.add_argument('-th','--threshold',help='threshold to decide identical faces',default=1.54, type=float)
-    parser.add_argument("-u", "--update", help="whether perform update the facebank",action="store_true")
-    parser.add_argument("-tta", "--tta", help="whether test time augmentation",action="store_true")
-    parser.add_argument("-c", "--score", help="whether show the confidence score",action="store_true")
-    parser.add_argument('--resume', action='store_true',
-                        help='resume from previous model via load_state_dict')
-    args = parser.parse_args()
+    if args.net_mode == 'mobilefacenet':
+        conf.use_mobilfacenet = True
+    else:
+        conf.net_mode = args.net_mode
+        conf.net_depth = args.net_depth
     conf.resume = args.resume
 
     learner = face_learner(conf, inference=True)
-    learner.load_state(conf, 'ir_se50_pre.pth', model_only=True, from_save_folder=True)
-    # verify(learner)
+    learner.load_state(conf, 'ir_se100_18.pth', model_only=True, from_save_folder=True)
+    verify(learner)
 
     # conf.use_mobilfacenet = True
     # learner = face_learner(conf, inference=True)
     # learner.load_state(conf, 'mobilefacenet.pth', True, True)
     # verify(learner)
 
-    conf.gen_feature = True
-    feat_path = conf.mat_path/'feature.mat'
-    identify(learner, conf, log_dir, feat_path, args.tta)
+    # conf.gen_feature = True
+    # feat_path = conf.mat_path/'feature.mat'
+    # identify(learner, conf, log_dir, feat_path, args.tta)

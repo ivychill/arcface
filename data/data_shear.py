@@ -162,8 +162,13 @@ def split_train_test(base, src_from, src_to_train, src_to_test, dst_from, dst_to
         copytree(os.path.join(base, dst_from, person), os.path.join(base, dst_to_train, person))
 
 if __name__ == '__main__':
-    # base = '/srv/dataset/test'
-    base = '../dataset/test'
+    base = '/srv/dataset/test'
+
+    # src = '10w_112_org/shanghai_important_42w'
+    # dst = '10w_112'
+    # dir_per_person(base, src, dst)
+
+    # base = '../dataset/test'
     # src = 'kc_employee_id'
     # dst = 'kc_id'
     # dir_per_person(base, src, dst)
@@ -190,11 +195,11 @@ if __name__ == '__main__':
     # rm_empty(base, dst)
     # rm_except_intersection(base, src, dst)
 
-    # src = 'kc_employee_id_112'
-    # dst = 'kc_employee_dynamic_112'
-    # rm_empty(base, src)
-    # rm_empty(base, dst)
-    # rm_except_intersection(base, src, dst)
+    src = 'kc_employee_id_112'
+    dst = 'kc_employee_dynamic_112'
+    rm_empty(base, src)
+    rm_empty(base, dst)
+    rm_except_intersection(base, src, dst)
 
     # src = 'shanghai_cam_id_112'
     # dst = 'shanghai_cam_dynamic_112'
@@ -216,10 +221,20 @@ if __name__ == '__main__':
     # dst = '10w_112/shanghai_important_42w'
     # select_nth_file(base, src, dst, 4)
 
-    src_from = 'shanghai_cam_id_112'
-    src_to_train = 'shanghai_cam_id_112_train_6k'
-    src_to_test = 'shanghai_cam_id_112_test_1k'
-    dst_from = 'shanghai_cam_dynamic_112'
-    dst_to_train = 'shanghai_cam_dynamic_112_train_6k'
-    dst_to_test = 'shanghai_cam_dynamic_112_test_1k'
-    split_train_test(base, src_from, src_to_train, src_to_test, dst_from, dst_to_train, dst_to_test, 7)
+    # src_from = 'shanghai_cam_id_112'
+    # src_to_train = 'shanghai_cam_id_112_train_6k'
+    # src_to_test = 'shanghai_cam_id_112_test_1k'
+    # dst_from = 'shanghai_cam_dynamic_112'
+    # dst_to_train = 'shanghai_cam_dynamic_112_train_6k'
+    # dst_to_test = 'shanghai_cam_dynamic_112_test_1k'
+    # split_train_test(base, src_from, src_to_train, src_to_test, dst_from, dst_to_train, dst_to_test, 7)
+
+    # src = 'g_shanghai_cam_dynamic_112_test_1k'
+    # dst = 'q_shanghai_cam_dynamic_112_test_1k'
+    # make_q_g(base, src, dst, 1)
+
+    # src = 'q_shanghai_cam_dynamic_112_test_1k'
+    # dst = 'g_shanghai_cam_dynamic_112_test_1k'
+    # rm_empty(base, src)
+    # rm_empty(base, dst)
+    # rm_except_intersection(base, src, dst)

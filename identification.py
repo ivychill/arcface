@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import os
 from log import logger
 
 # true top1 at false top1
@@ -72,7 +73,7 @@ def compute_mAP(qf, q_pids, gf, g_pids):
 
     return cmc, mAP
 
-def compute_rank1(distmat, max_index, q_pids, g_pids, threshold):
+def compute_rank1(distmat, max_index, q_pids, g_pids, threshold, data_path, err_rank1):
     # index = np.argsort(distmat)  # from small to large
     # max_index = index[:, 0]
     query_num = distmat.shape[0]
@@ -88,6 +89,10 @@ def compute_rank1(distmat, max_index, q_pids, g_pids, threshold):
                 acc += 1
             else:
                 err += 1
+                if threshold > 0.995 and threshold < 1.005:
+                    logger.debug('str(q_pids[i]) {}'.format(str(q_pids[i].item())))
+                    with open(err_rank1, 'at') as f:
+                        f.write('{}\t{}\n'.format(data_path.query_dict[str(q_pids[i].item())], data_path.gallery_dict[str(g_pids[max_index[i]].item())]))
         else:
             miss += 1
 
@@ -97,3 +102,22 @@ def compute_rank1(distmat, max_index, q_pids, g_pids, threshold):
     miss = miss/float(query_num)
 
     return acc, err, miss
+
+class DataPath():
+    def __init__(self, query_list_file, gallery_list_file):
+        self.query_dict = self.getDataFromTxt(query_list_file)
+        self.gallery_dict = self.getDataFromTxt(gallery_list_file)
+
+    def getDataFromTxt(self, train_trip_txt):
+        data_trip = {}
+        with open(train_trip_txt, 'r') as f:
+            data_raw = f.readlines()
+            for line_i in data_raw:
+                line_i = line_i.strip('\n')
+                img_name, pid = line_i.split(' ')
+                if pid in data_trip:
+                    logger.error('duplicate label {}'.format(pid))
+                else:
+                    data_trip[pid] = img_name
+        logger.info('id num {}'.format(len(data_raw)))
+        return data_trip
