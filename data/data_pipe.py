@@ -153,12 +153,15 @@ def load_mx_rec(rec_path):
         img_info = imgrec.read_idx(idx)
         header, img = mx.recordio.unpack_img(img_info)
         label = int(header.label)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # added by fengchen
-        img = Image.fromarray(img)
+        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # added by fengchen
+        # img = Image.fromarray(img)
         label_path = save_path/str(label)
         if not label_path.exists():
             label_path.mkdir()
-        img.save(label_path/'{}.jpg'.format(idx), quality=95)
+        # img.save(label_path/'{}.jpg'.format(idx), quality=95)
+        # img.save(label_path/'{}.png'.format(idx))
+        img_path = str(label_path/'{}.png'.format(idx))
+        cv2.imwrite(img_path, img, [int(cv2.IMWRITE_PNG_COMPRESSION), 0])
 
 # class train_dataset(Dataset):
 #     def __init__(self, imgs_bcolz, label_bcolz, h_flip=True):

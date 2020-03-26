@@ -20,15 +20,15 @@ def dir_per_person(base, src, dst):
 def cp_intersection(base, src_from, src_to, dst_from, dst_to):
     src_persons = os.listdir(os.path.join(base, src_from))
     dst_persons = os.listdir(os.path.join(base, dst_from))
-    inter_persions = set(src_persons) & set(dst_persons)
-    for person in inter_persions:
+    inter_persons = set(src_persons) & set(dst_persons)
+    for person in inter_persons:
         copytree(os.path.join(base, src_from, person), os.path.join(base, src_to, person))
         copytree(os.path.join(base, dst_from, person), os.path.join(base, dst_to, person))
-    # rm_src_persons = set(src_persons) - inter_persions
+    # rm_src_persons = set(src_persons) - inter_persons
     # for person in rm_src_persons:
     #     print('src:', person)
     #     os.remove(os.path.join(base, src, person))
-    # rm_dst_persons = set(dst_persons) - inter_persions
+    # rm_dst_persons = set(dst_persons) - inter_persons
     # for person in rm_dst_persons:
     #     print('dst:', person)
     #     os.remove(os.path.join(base, src, person))
@@ -36,12 +36,12 @@ def cp_intersection(base, src_from, src_to, dst_from, dst_to):
 def rm_except_intersection(base, src, dst):
     src_persons = os.listdir(os.path.join(base, src))
     dst_persons = os.listdir(os.path.join(base, dst))
-    inter_persions = set(src_persons) & set(dst_persons)
-    rm_src_persons = set(src_persons) - inter_persions
+    inter_persons = set(src_persons) & set(dst_persons)
+    rm_src_persons = set(src_persons) - inter_persons
     for person in rm_src_persons:
         print('src:', person)
         rmtree(os.path.join(base, src, person))
-    rm_dst_persons = set(dst_persons) - inter_persions
+    rm_dst_persons = set(dst_persons) - inter_persons
     for person in rm_dst_persons:
         print('dst:', person)
         rmtree(os.path.join(base, dst, person))
@@ -160,6 +160,7 @@ def split_train_test(base, src_from, src_to_train, src_to_test, dst_from, dst_to
         # print('train: ', person)
         copytree(os.path.join(base, src_from, person), os.path.join(base, src_to_train, person))
         copytree(os.path.join(base, dst_from, person), os.path.join(base, dst_to_train, person))
+
 
 if __name__ == '__main__':
     base = '/srv/dataset/test'

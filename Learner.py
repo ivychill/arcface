@@ -101,14 +101,14 @@ class face_learner(object):
                 # self.head.state_dict(), save_path /
                 #                         ('head_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step,
                 #                                                                      extra)))
-                self.model.state_dict(), save_path /
+                self.head.state_dict(), save_path /
                                          ('head_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
                                                                                        extra)))
             torch.save(
                 # self.optimizer.state_dict(), save_path /
                 #                              ('optimizer_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy,
                 #                                                                                self.step, extra)))
-                self.model.state_dict(), save_path /
+                self.optimizer.state_dict(), save_path /
                                          ('optimizer_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
                                                                                 extra)))
             # torch.save(
@@ -200,6 +200,7 @@ class face_learner(object):
             dist = np.sum(np.square(diff), 1)
             return dist
 
+        self.model.eval()
         if conf.gen_feature:
             with torch.no_grad():
                 query_feature, query_label = extract_feature(conf, self.model, self.loader['query']['dl'], tta)

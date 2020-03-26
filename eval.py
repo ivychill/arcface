@@ -118,14 +118,14 @@ if __name__ == '__main__':
     conf.resume = args.resume
 
     learner = face_learner(conf, inference=True)
-    learner.load_state(conf, 'ir_se100_18.pth', model_only=True, from_save_folder=True)
-    verify(learner)
+    # learner.load_state(conf, 'ir_se100_18.pth', model_only=True, from_save_folder=True)
+    # verify(learner)
 
     # conf.use_mobilfacenet = True
     # learner = face_learner(conf, inference=True)
     # learner.load_state(conf, 'mobilefacenet.pth', True, True)
     # verify(learner)
 
-    # conf.gen_feature = True
-    # feat_path = conf.mat_path/'feature.mat'
-    # identify(learner, conf, log_dir, feat_path, args.tta)
+    conf.gen_feature = True
+    feat_path = conf.mat_path/'feature.mat'
+    identify(learner, conf, log_dir, feat_path, args.tta)
