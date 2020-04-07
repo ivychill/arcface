@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from data.data_pipe import de_preprocess, get_train_loader, get_val_data, get_test_loader
-from model import Backbone, Arcface, MobileFaceNet, Am_softmax, l2_norm
+from model_2l import Backbone, Arcface, MobileFaceNet, Triplet, l2_norm
 from verifacation import evaluate
 import torch
 from torch import optim
@@ -45,12 +45,13 @@ class face_learner(object):
         if not inference:
             self.milestones = conf.milestones
             logger.info('loading data...')
-            self.loader, self.class_num = get_train_loader(conf)        
+            self.loader_arc, self.class_num_arc = get_train_loader(conf, 'emore', sample_identity=False)
+            self.loader_tri, self.class_num_tri = get_train_loader(conf, 'glint', sample_identity=True)
 
             self.writer = SummaryWriter(conf.log_path)
             self.step = 0
-            self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num).cuda()
-
+            self.head_arc = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num_arc).cuda()
+            self.head_tri = Triplet().cuda()
             logger.debug('two model heads generated')
 
             paras_only_bn, paras_wo_bn = separate_bn_paras(self.model)
@@ -58,12 +59,12 @@ class face_learner(object):
             if conf.use_mobilfacenet:
                 self.optimizer = optim.SGD([
                                     {'params': paras_wo_bn[:-1], 'weight_decay': 4e-5},
-                                    {'params': [paras_wo_bn[-1]] + [self.head.kernel], 'weight_decay': 4e-4},
+                                    {'params': [paras_wo_bn[-1]] + [self.head_arc.kernel], 'weight_decay': 4e-4},
                                     {'params': paras_only_bn}
                                 ], lr = conf.lr, momentum = conf.momentum)
             else:
                 self.optimizer = optim.SGD([
-                                    {'params': paras_wo_bn + [self.head.kernel], 'weight_decay': 5e-4},
+                                    {'params': paras_wo_bn + [self.head_arc.kernel], 'weight_decay': 5e-4},
                                     {'params': paras_only_bn}
                                 ], lr = conf.lr, momentum = conf.momentum)
             # self.optimizer = torch.nn.parallel.DistributedDataParallel(optimizer,device_ids=[conf.argsed])
@@ -75,11 +76,10 @@ class face_learner(object):
             else:
                 self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[conf.argsed]).cuda() #add line for distributed
 
-            logger.debug('dataset {}'.format(self.loader.dataset))
-            self.board_loss_every = len(self.loader)//100
-            self.evaluate_every = len(self.loader)//4
-            self.save_every = len(self.loader)//4
-            self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader.dataset.root).parent)
+            self.board_loss_every = len(self.loader_arc)//100
+            self.evaluate_every = len(self.loader_arc)//4
+            self.save_every = len(self.loader_arc)//4
+            self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader_arc.dataset.root).parent)
         else:
             self.threshold = conf.threshold
             self.loader, self.query_ds, self.gallery_ds = get_test_loader(conf)
@@ -90,32 +90,18 @@ class face_learner(object):
         else:
             save_path = conf.model_path
         torch.save(
-            # self.model.state_dict(), save_path /
-            #                          ('model_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step,
-            #                                                                        extra)))
             self.model.state_dict(), save_path /
                                      ('model_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
                                                                                    extra)))
         if not model_only:
             torch.save(
-                # self.head.state_dict(), save_path /
-                #                         ('head_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step,
-                #                                                                      extra)))
-                self.head.state_dict(), save_path /
+                self.head_arc.state_dict(), save_path /
                                          ('head_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
                                                                                        extra)))
             torch.save(
-                # self.optimizer.state_dict(), save_path /
-                #                              ('optimizer_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy,
-                #                                                                                self.step, extra)))
                 self.optimizer.state_dict(), save_path /
                                          ('optimizer_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
                                                                                 extra)))
-            # torch.save(
-            #     amp.state_dict(), save_path /
-            #                              ('amp_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
-            #                                                                     extra)))
-
 
     def load_network(self, save_path):
         state_dict = torch.load(save_path)
@@ -140,7 +126,7 @@ class face_learner(object):
             self.model.load_state_dict(self.load_network(save_path / 'model_{}'.format(fixed_str)))
 
         if not model_only:
-            self.head.load_state_dict(torch.load(save_path / 'head_{}'.format(fixed_str)))
+            self.head_arc.load_state_dict(torch.load(save_path / 'head_{}'.format(fixed_str)))
             self.optimizer.load_state_dict(torch.load(save_path / 'optimizer_{}'.format(fixed_str)))
             logger.info('load optimizer {}'.format(self.optimizer))
             # amp.load_state_dict(torch.load(save_path / 'amp_{}'.format(fixed_str)))
@@ -149,9 +135,6 @@ class face_learner(object):
         self.writer.add_scalar('{}_accuracy'.format(db_name), accuracy, self.step)
         self.writer.add_scalar('{}_best_threshold'.format(db_name), best_threshold, self.step)
         self.writer.add_image('{}_roc_curve'.format(db_name), roc_curve_tensor, self.step)
-#         self.writer.add_scalar('{}_val:true accept ratio'.format(db_name), val, self.step)
-#         self.writer.add_scalar('{}_val_std'.format(db_name), val_std, self.step)
-#         self.writer.add_scalar('{}_far:False Acceptance Ratio'.format(db_name), far, self.step)
         
     def evaluate(self, conf, carray, issame, nrof_folds = 5, tta = False):
         self.model.eval()
@@ -162,21 +145,19 @@ class face_learner(object):
                 batch = torch.tensor(carray[idx:idx + conf.batch_size])
                 if tta:
                     fliped = hflip_batch(batch)
-                    emb_batch = self.model(batch.cuda()) + self.model(fliped.cuda())
-                    # emb_batch = self.model(batch.to(conf.device)) + self.model(fliped.to(conf.device))
+                    emb_batch = self.model(batch.cuda())[1] + self.model(fliped.cuda())[1]
                     embeddings[idx:idx + conf.batch_size] = l2_norm(emb_batch).cpu()
                 else:
-                    embeddings[idx:idx + conf.batch_size] = self.model(batch.cuda()).cpu()
-                    # embeddings[idx:idx + conf.batch_size] = self.model(batch.to(conf.device)).cpu()
+                    embeddings[idx:idx + conf.batch_size] = self.model(batch.cuda())[1].cpu()
                 idx += conf.batch_size
             if idx < len(carray):
                 batch = torch.tensor(carray[idx:])            
                 if tta:
                     fliped = hflip_batch(batch)
-                    emb_batch = self.model(batch.cuda()) + self.model(fliped.cuda())
+                    emb_batch = self.model(batch.cuda())[1] + self.model(fliped.cuda())[1]
                     embeddings[idx:] = l2_norm(emb_batch)
                 else:
-                    embeddings[idx:] = self.model(batch.cuda()).cpu()
+                    embeddings[idx:] = self.model(batch.cuda())[1].cpu()
         tpr, fpr, accuracy, best_thresholds = evaluate(embeddings, issame, nrof_folds)
         buf = gen_plot(fpr, tpr)
         roc_curve = Image.open(buf)
@@ -205,6 +186,8 @@ class face_learner(object):
             with torch.no_grad():
                 query_feature, query_label = extract_feature(conf, self.model, self.loader['query']['dl'], tta)
                 gallery_feature, gallery_label = extract_feature(conf, self.model, self.loader['gallery']['dl'], tta)
+            # result = {'query_feature': query_feature.numpy(), 'query_label': query_label,
+            #     'gallery_feature': gallery_feature.numpy(), 'gallery_label': gallery_label}
 
             result = {'query_feature': query_feature.numpy(), 'query_label': query_label.numpy(),
                 'gallery_feature': gallery_feature.numpy(), 'gallery_label': gallery_label.numpy()}
@@ -216,16 +199,6 @@ class face_learner(object):
             query_label = torch.from_numpy(result['query_label'])[0]
             gallery_feature = torch.from_numpy(result['gallery_feature'])
             gallery_label = torch.from_numpy(result['gallery_label'])[0]
-
-        # np.set_printoptions(threshold=np.inf)
-        # logger.debug('query_label: {}'.format(query_label.numpy()))
-        # logger.debug('gallery_label: {}'.format(gallery_label.numpy()))
-        # feat = result['query_feature'][0:2]
-        # logger.debug('feat {}'.format(feat.shape))
-        # emb1 = np.repeat(feat, [3,1], axis=0)
-        # emb2 = result['gallery_feature'][0:4]
-        # dist = distance(emb1, emb2)
-        # logger.debug('distance {}'.format(dist))
 
         distmat = gen_distmat(query_feature, query_label, gallery_feature, gallery_label)
 
@@ -248,13 +221,6 @@ class face_learner(object):
 
         index = np.argsort(distmat)  # from small to large
         max_index = index[:, 0]
-        # query_num = distmat.shape[0]
-        # logger.debug('distmat {}'.format(distmat[0:2,0:4]))
-        # for i in range(query_num):
-        #     logger.debug('query: {}, gallery: {}'.format(self.query_ds.imgs[i], self.gallery_ds.imgs[max_index[i]]))
-            # logger.debug('index[i] {}'.format(index[i]))
-            # logger.debug('distmat[i, max_index[i]]: {}'.format(distmat[i, max_index[i]]))
-            # logger.debug('distmat[i] {}'.format(distmat[i]))
 
         query_list_file = 'data/probe.txt'
         gallery_list_file = 'data/gallery.txt'
@@ -306,7 +272,7 @@ class face_learner(object):
             self.optimizer.zero_grad()
 
             embeddings = self.model(imgs)
-            thetas = self.head(embeddings, labels)
+            thetas = self.head_arc(embeddings, labels)
             loss = conf.ce_loss(thetas, labels)          
           
             #Compute the smoothed loss
@@ -326,8 +292,6 @@ class face_learner(object):
             losses.append(smoothed_loss)
             log_lrs.append(math.log10(lr))
             self.writer.add_scalar('log_lr', math.log10(lr), batch_num)
-            #Do the SGD step
-            #Update the lr for the next step
 
             loss.backward()
             self.optimizer.step()
@@ -352,25 +316,24 @@ class face_learner(object):
         logger.debug('optimizer {}'.format(self.optimizer))
         for epoch in range(epochs):
             logger.debug('epoch {} started'.format(epoch))
-            # if epoch == self.milestones[0]:
-            #     self.schedule_lr()
-            # if epoch == self.milestones[1]:
-            #     self.schedule_lr()
-            # if epoch == self.milestones[2]:
-            if epoch in self.milestones:
-                self.schedule_lr()                
-            #for i, (imgs, labels) in tqdm(enumerate(self.loader)):  
-            #for imgs, labels in enumerate(self.loader):             
-            for imgs, labels in tqdm(iter(self.loader)):
-                imgs = imgs.cuda()#to(conf.device)
-                labels = labels.cuda()#to(conf.device)
+            for data_arc, data_tri in zip(tqdm(iter(self.loader_arc)), tqdm(iter(self.loader_tri))):
+                if self.step in self.milestones:
+                    self.schedule_lr()
+                imgs_arc, labels_arc = data_arc
+                # logger.debug('labels_arc {}'.format(labels_arc))
+                imgs_tri, labels_tri = data_tri
+                # logger.debug('labels_tri {}'.format(labels_tri))
+                imgs_arc = imgs_arc.cuda()
+                labels_arc = labels_arc.cuda()
+                imgs_tri = imgs_tri.cuda()
+                labels_tri = labels_tri.cuda()
                 self.optimizer.zero_grad()
-                #print(imgs)
-                embeddings = self.model(imgs)
-                thetas = self.head(embeddings, labels)
-                loss = conf.ce_loss(thetas, labels)
-
-                # loss.backward()
+                _, embeddings_arc = self.model(imgs_arc)
+                embeddings_tri, _ = self.model(imgs_tri)
+                thetas = self.head_arc(embeddings_arc, labels_arc)
+                loss_arc = conf.ce_loss(thetas, labels_arc)
+                loss_tri = self.head_tri(embeddings_tri, labels_tri)
+                loss = loss_arc + loss_tri
                 if conf.fp16:  # we use optimier to backward loss
                     with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                         scaled_loss.backward()
@@ -378,7 +341,6 @@ class face_learner(object):
                     loss.backward()
 
                 running_loss += loss.item()
-                # print(loss.item())
                 self.optimizer.step()
                 
                 if self.step % self.board_loss_every == 0 and self.step != 0: #comment line
@@ -394,9 +356,11 @@ class face_learner(object):
                     accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.cfp_fp, self.cfp_fp_issame)
                     self.board_val('cfp_fp', accuracy, best_threshold, roc_curve_tensor)
                     # logger.debug('optimizer {}'.format(self.optimizer))
-                    logger.debug('epoch {}, step {}, loss {:.4f}, acc {:.4f}'.format(epoch, self.step, loss.item(), accuracy))
+                    logger.debug('epoch {}, step {}, loss_arc {:.4f}, loss_tri {:.4f}, loss {:.4f}, acc {:.4f}'
+                                 .format(epoch, self.step, loss_arc.item(), loss_tri.item(), loss.item(), accuracy))
                     self.model.train()
-                if conf.local_rank == 0 and epoch >= 10 and self.step % self.save_every == 0 and self.step != 0:
+                # if conf.local_rank == 0 and epoch >= 10 and self.step % self.save_every == 0 and self.step != 0:
+                if conf.local_rank == 0 and epoch >= 8 and self.step % self.save_every == 0 and self.step != 0:
                 # if conf.local_rank == 0 and self.step % self.save_every == 0 and self.step != 0:
                     self.save_state(conf, epoch, accuracy)
                     

@@ -9,7 +9,7 @@ from torchvision import transforms as trans
 import pdb
 from config import get_config
 import argparse
-from Learner import face_learner
+from Learner_2l import face_learner
 from data.data_pipe import get_val_pair
 from log import *
 
@@ -105,8 +105,8 @@ if __name__ == '__main__':
     #### log ####
     time_str = time.strftime("%Y%m%d_%H%M%S", time.localtime())
     log_dir = conf.log_path/time_str
-    if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
-        os.makedirs(log_dir)
+    # if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
+    #     os.makedirs(log_dir)
     set_logger(logger, log_dir)
     logger.debug('start eval...')
 
@@ -118,7 +118,7 @@ if __name__ == '__main__':
     conf.resume = args.resume
 
     learner = face_learner(conf, inference=True)
-    # learner.load_state(conf, 'ir_se100_18.pth', model_only=True, from_save_folder=True)
+    learner.load_state(conf, 'ir_se100_ds_19.pth', model_only=True, from_save_folder=True)
     # verify(learner)
 
     # conf.use_mobilfacenet = True

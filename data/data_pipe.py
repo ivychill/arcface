@@ -8,47 +8,51 @@ import numpy as np
 import cv2
 import bcolz
 import pickle
+import os
 import torch
 import mxnet as mx
 from tqdm import tqdm
+from data.sampler import DistRandomIdentitySampler
 from log import logger
 
 def de_preprocess(tensor):
     return tensor*0.5 + 0.5
     
-def get_train_dataset(imgs_folder):
-    train_transform = trans.Compose([
-        trans.RandomHorizontalFlip(),
-        trans.ToTensor(),
-        trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-    ])
-    ds = ImageFolder(str(imgs_folder), train_transform) # �����￪ʼ�ʹ���
-    class_num = ds[-1][1] + 1
-    return ds, class_num
-
-def get_train_loader(conf):
-    if conf.data_mode in ['ms1m', 'concat']:
-        ms1m_ds, ms1m_class_num = get_train_dataset(conf.ms1m_folder/'imgs')
-        print('ms1m loader generated')
-    if conf.data_mode in ['vgg', 'concat']:
-        vgg_ds, vgg_class_num = get_train_dataset(conf.vgg_folder/'imgs')
-        print('vgg loader generated')        
-    if conf.data_mode == 'vgg':
-        ds = vgg_ds
-        class_num = vgg_class_num
-    elif conf.data_mode == 'ms1m':
-        ds = ms1m_ds
-        class_num = ms1m_class_num
-    elif conf.data_mode == 'concat':
-        for i,(url,label) in enumerate(vgg_ds.imgs):
-            vgg_ds.imgs[i] = (url, label + ms1m_class_num)
-        ds = ConcatDataset([ms1m_ds,vgg_ds])
-        class_num = vgg_class_num + ms1m_class_num
-    elif conf.data_mode == 'emore':
-        ds, class_num = get_train_dataset(conf.emore_folder/'imgs')
-    train_sampler = distributed.DistributedSampler(ds) #add line
-    loader = DataLoader(ds, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers, sampler = train_sampler)
-    return loader, class_num
+# def get_train_dataset(imgs_folder):
+#     train_transform = trans.Compose([
+#         trans.RandomHorizontalFlip(),
+#         trans.ToTensor(),
+#         trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+#     ])
+#     ds = ImageFolder(str(imgs_folder), train_transform)
+#     class_num = ds[-1][1] + 1
+#     return ds, class_num
+#
+# def get_train_loader(conf):
+#     if conf.data_mode in ['ms1m', 'concat']:
+#         ms1m_ds, ms1m_class_num = get_train_dataset(conf.ms1m_folder/'imgs')
+#         print('ms1m loader generated')
+#     if conf.data_mode in ['vgg', 'concat']:
+#         vgg_ds, vgg_class_num = get_train_dataset(conf.vgg_folder/'imgs')
+#         print('vgg loader generated')
+#     if conf.data_mode == 'vgg':
+#         ds = vgg_ds
+#         class_num = vgg_class_num
+#     elif conf.data_mode == 'ms1m':
+#         ds = ms1m_ds
+#         class_num = ms1m_class_num
+#     elif conf.data_mode == 'concat':
+#         for i,(url,label) in enumerate(vgg_ds.imgs):
+#             vgg_ds.imgs[i] = (url, label + ms1m_class_num)
+#         ds = ConcatDataset([ms1m_ds,vgg_ds])
+#         class_num = vgg_class_num + ms1m_class_num
+#     elif conf.data_mode == 'emore':
+#         ds, class_num = get_train_dataset(conf.emore_folder/'imgs')
+#     elif conf.data_mode == 'glint':
+#         ds, class_num = get_train_dataset(conf.glint_folder/'imgs')
+#     train_sampler = distributed.DistributedSampler(ds) #add line
+#     loader = DataLoader(ds, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers, sampler = train_sampler)
+#     return loader, class_num
 
 def get_test_dataset(imgs_folder):
     test_transform = trans.Compose([
@@ -152,16 +156,17 @@ def load_mx_rec(rec_path):
     for idx in tqdm(range(1,max_idx)):
         img_info = imgrec.read_idx(idx)
         header, img = mx.recordio.unpack_img(img_info)
-        label = int(header.label)
-        # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # added by fengchen
-        # img = Image.fromarray(img)
+        # label = int(header.label)
+        label = int(header.label[0])
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # added by fengchen
+        img = Image.fromarray(img)
         label_path = save_path/str(label)
         if not label_path.exists():
             label_path.mkdir()
-        # img.save(label_path/'{}.jpg'.format(idx), quality=95)
+        img.save(label_path/'{}.jpg'.format(idx), quality=95)
         # img.save(label_path/'{}.png'.format(idx))
-        img_path = str(label_path/'{}.png'.format(idx))
-        cv2.imwrite(img_path, img, [int(cv2.IMWRITE_PNG_COMPRESSION), 0])
+        # img_path = str(label_path/'{}.png'.format(idx))
+        # cv2.imwrite(img_path, img, [int(cv2.IMWRITE_PNG_COMPRESSION), 0])
 
 # class train_dataset(Dataset):
 #     def __init__(self, imgs_bcolz, label_bcolz, h_flip=True):
@@ -188,3 +193,98 @@ def load_mx_rec(rec_path):
 #             img = de_preprocess(img)
 #             img = self.transform(img)
 #         return img, label
+
+def has_file_allowed_extension(filename, extensions):
+    """Checks if a file is an allowed extension.
+
+    Args:
+        filename (string): path to a file
+
+    Returns:
+        bool: True if the filename ends with a known image extension
+    """
+    filename_lower = filename.lower()
+    return any(filename_lower.endswith(ext) for ext in extensions)
+
+def find_classes(dir):
+    classes = [d for d in os.listdir(dir) if os.path.isdir(os.path.join(dir, d))]
+    classes.sort()
+    class_to_idx = {classes[i]: i for i in range(len(classes))}
+    return len(classes), class_to_idx
+
+def make_dataset(dir, class_to_idx, extensions):
+    images = []
+    dir = os.path.expanduser(dir)
+    for target in sorted(os.listdir(dir)):
+        d = os.path.join(dir, target)
+        if not os.path.isdir(d):
+            continue
+
+        for root, _, fnames in sorted(os.walk(d)):
+            for fname in sorted(fnames):
+                if has_file_allowed_extension(fname, extensions):
+                    path = os.path.join(root, fname)
+                    item = (path, class_to_idx[target])
+                    images.append(item)
+
+    return images
+
+class ImageDataset(Dataset):
+    """Image Person ReID Dataset"""
+
+    def __init__(self, root, class_to_idx, transform=None):
+        self.root = root
+        extensions = ['.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif']
+        dataset = make_dataset(root, class_to_idx, extensions)
+        self.dataset = dataset
+        self.transform = transform
+
+    def read_image(self, img_path):
+        """Keep reading image until succeed.
+        This can avoid IOError incurred by heavy IO process."""
+        got_img = False
+        if not os.path.exists(img_path):
+            raise IOError("{} does not exist".format(img_path))
+        while not got_img:
+            try:
+                img = Image.open(img_path).convert('RGB')
+                got_img = True
+            except IOError:
+                print("IOError incurred when reading '{}'. Will redo. Don't worry. Just chill.".format(img_path))
+                pass
+        return img
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, index):
+        img_path, pid = self.dataset[index]
+        img = self.read_image(img_path)
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        return img, pid
+
+def get_train_loader(conf, data_mode, sample_identity=False):
+    if data_mode == 'emore':
+        root = conf.emore_folder/'imgs'
+    elif data_mode == 'glint':
+        root = conf.glint_folder/'imgs'
+    else:
+        logger.fatal('invalide data_mode {}'.format(data_mode))
+        exit(1)
+
+    class_num, class_to_idx = find_classes(root)
+    train_transform = trans.Compose([
+        trans.RandomHorizontalFlip(),
+        trans.ToTensor(),
+        trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+    ])
+    dataset = ImageDataset(root, class_to_idx, train_transform)
+    if sample_identity:
+        train_sampler = DistRandomIdentitySampler(dataset.dataset, conf.batch_size, conf.num_instances)
+    else:
+        train_sampler = distributed.DistributedSampler(dataset)
+    loader = DataLoader(dataset, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers, sampler = train_sampler)
+    return loader, class_num

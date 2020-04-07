@@ -25,21 +25,25 @@ def get_config(training = True):
                     trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
                 ])
     conf.data_mode = 'emore'
+    # conf.data_mode = 'glint'
     conf.vgg_folder = conf.data_path/'faces_vgg_112x112'
     conf.ms1m_folder = conf.data_path/'faces_ms1m_112x112'
     conf.emore_folder = conf.data_path/'train'/'faces_emore'
-    conf.query_kc_folder = conf.data_path/'test'/'query_ms'
-    conf.gallery_kc_folder = conf.data_path/'test'/'gallery_ms'
+    conf.glint_folder = conf.data_path/'train'/'faces_glint'
     conf.argsed = None
     conf.batch_size = 100 # irse net depth 50 
 #   conf.batch_size = 200 # mobilefacenet
+    conf.num_instances = 4
 #--------------------Training Config ------------------------    
     if training:        
         conf.log_path = conf.work_path/'log'
         conf.save_path = conf.work_path/'save'
     #     conf.weight_decay = 5e-4
         conf.lr = 1e-1
-        conf.milestones = [8,12,16]
+        conf.milestones = [100000,160000,220000]
+        # conf.milestones = [200000, 320000, 440000]
+        # conf.milestones = [8,12,16]
+        # conf.milestones = [9,14,19]
         # conf.milestones = [6, 10, 14, 18]
         conf.momentum = 0.9
         conf.pin_memory = True

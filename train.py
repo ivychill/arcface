@@ -1,5 +1,5 @@
 from config import get_config
-from Learner import face_learner
+from Learner_tmp import face_learner
 import argparse
 import random
 import numpy as np
@@ -16,6 +16,7 @@ if __name__ == '__main__':
     torch.manual_seed(2020)
     torch.cuda.manual_seed_all(2020)
     random.seed(2020)
+    torch.set_printoptions(threshold=np.inf)
 
     parser = argparse.ArgumentParser(description='for face verification')
     parser.add_argument("-e", "--epochs", help="training epochs", default=100, type=int)
@@ -54,8 +55,8 @@ if __name__ == '__main__':
     #### log ####
     time_str = time.strftime("%Y%m%d_%H%M", time.localtime())
     log_dir = conf.log_path/time_str
-    # if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
-    #     os.makedirs(log_dir, exist_ok=True)
+    if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
+        os.makedirs(log_dir, exist_ok=True)
     set_logger(logger, log_dir)
     logger.debug('start train...')
     logger.debug('local_rank {}'.format(args.local_rank))

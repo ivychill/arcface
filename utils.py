@@ -158,10 +158,10 @@ def extract_feature(conf, model, loader, tta=False):
 
         if tta:
             fliped = hflip_batch(inputs)
-            outputs = model(inputs.cuda()) + model(fliped.cuda())
+            outputs = model(inputs.cuda())[1] + model(fliped.cuda())[1]
             feature = l2_norm(outputs).cpu()
         else:
-            feature = model(inputs.cuda()).cpu()
+            feature = model(inputs.cuda())[1].cpu()
 
         features = torch.cat((features, feature), 0)
 

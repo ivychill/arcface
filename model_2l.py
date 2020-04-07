@@ -3,7 +3,6 @@ import torch.nn.functional as F
 import torch
 from collections import namedtuple
 import math
-import numpy as np
 import pdb
 from config import get_config
 
@@ -124,7 +123,6 @@ class HybridPooling(Module):
         super(HybridPooling, self).__init__()
 
     def forward(self, input):
-        torch.set_printoptions(threshold=np.inf)
         avg_feat = AdaptiveAvgPool2d(1)(input)
         avg_feat = avg_feat.view(avg_feat.shape[0], -1)
         max_feat = AdaptiveMaxPool2d(1)(input)
@@ -148,12 +146,9 @@ class Backbone(Module):
         self.output_layer = Sequential(BatchNorm2d(512),
                                        Dropout(drop_ratio),
                                        Flatten(),
-                                       Linear(512 * 7 * 7, 512),
-                                       BatchNorm1d(512))
-        # self.output_layer = Sequential(BatchNorm2d(512),
-        #                                Dropout(drop_ratio),
-        #                                HybridPooling(),
-        #                                BatchNorm1d(512))
+                                       Linear(512 * 7 * 7, 512))
+        self.bn_neck = BatchNorm1d(512)
+
         modules = []
         for block in blocks:
             for bottleneck in block:
@@ -166,8 +161,10 @@ class Backbone(Module):
     def forward(self,x):
         x = self.input_layer(x)
         x = self.body(x)
-        x = self.output_layer(x)
-        return l2_norm(x)
+        feature_tri = self.output_layer(x)
+        feature_arc = self.bn_neck(feature_tri)
+        # return l2_norm(feature_tri), l2_norm(feature_arc)
+        return feature_tri, l2_norm(feature_arc)
 
 ##################################  MobileFaceNet #############################################################
     
@@ -411,6 +408,7 @@ class Triplet(Module):
     Loss for Person Re-Identification'."""
 
     def __init__(self, margin=0.2):
+        super(Triplet, self).__init__()
         self.margin = margin
         if margin is not None:
             self.ranking_loss = torch.nn.MarginRankingLoss(margin=margin)
@@ -426,4 +424,4 @@ class Triplet(Module):
             loss = self.ranking_loss(dist_an, dist_ap, y)
         else:
             loss = self.ranking_loss(dist_an - dist_ap, y)
-        return loss, dist_ap, dist_an
+        return loss
