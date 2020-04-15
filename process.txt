@@ -1,0 +1,53 @@
+kcadmin  154706 154705  0 09:00 pts/10   00:00:02 python3 -m torch.distributed.launch --nproc_per_node=4 train.py -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+
+kcadmin  154756 154706 66 09:00 pts/10   04:20:32 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=0 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  154757 154706 88 09:00 pts/10   05:44:21 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=1 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  154758 154706 89 09:00 pts/10   05:48:23 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=2 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  154759 154706 92 09:00 pts/10   05:58:40 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=3 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+
+kcadmin  155694 154758  2 09:02 pts/10   00:11:37 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=2 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  155752 154758  2 09:02 pts/10   00:11:35 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=2 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  155780 154758  2 09:02 pts/10   00:11:35 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=2 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156535 154758  6 14:59 pts/10   00:02:00 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=2 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156553 154758  6 14:59 pts/10   00:02:00 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=2 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156572 154758  6 14:59 pts/10   00:02:01 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=2 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156610 154758  5 14:59 pts/10   00:01:36 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=2 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156623 154758  5 14:59 pts/10   00:01:37 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=2 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156651 154758  5 14:59 pts/10   00:01:36 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=2 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+
+
+kcadmin  155704 154756  2 09:02 pts/10   00:11:31 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=0 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  155717 154759  3 09:02 pts/10   00:11:49 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=3 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  155734 154757  3 09:02 pts/10   00:11:48 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=1 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  155743 154756  2 09:02 pts/10   00:11:30 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=0 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+
+kcadmin  155761 154759  3 09:02 pts/10   00:11:46 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=3 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  155770 154756  3 09:02 pts/10   00:11:46 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=0 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+
+kcadmin  155790 154757  3 09:02 pts/10   00:11:49 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=1 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  155799 154759  3 09:02 pts/10   00:11:47 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=3 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  155856 154757  3 09:02 pts/10   00:11:47 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=1 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156526 154756  5 14:59 pts/10   00:01:44 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=0 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+
+kcadmin  156540 154756  5 14:59 pts/10   00:01:44 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=0 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+
+kcadmin  156554 154756  5 14:59 pts/10   00:01:44 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=0 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+
+kcadmin  156586 154756  5 14:59 pts/10   00:01:38 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=0 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156604 154756  5 14:59 pts/10   00:01:38 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=0 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+
+kcadmin  156628 154756  5 14:59 pts/10   00:01:38 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=0 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156633 154759  5 14:59 pts/10   00:01:44 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=3 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+
+kcadmin  156661 154759  5 14:59 pts/10   00:01:45 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=3 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156670 154757  6 14:59 pts/10   00:02:03 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=1 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156728 154759  5 14:59 pts/10   00:01:45 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=3 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156738 154757  6 14:59 pts/10   00:02:04 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=1 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156751 154757  6 14:59 pts/10   00:02:04 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=1 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156811 154759  5 14:59 pts/10   00:01:36 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=3 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156823 154759  5 14:59 pts/10   00:01:35 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=3 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156834 154757  5 14:59 pts/10   00:01:36 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=1 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156845 154759  5 14:59 pts/10   00:01:36 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=3 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156855 154757  5 14:59 pts/10   00:01:36 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=1 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+kcadmin  156864 154757  5 14:59 pts/10   00:01:36 /home/kcadmin/anaconda2/envs/open-mmlab/bin/python3 -u train.py --local_rank=1 -net ir_se -depth 100 -b 64 -lr 5e-2 --fp16
+

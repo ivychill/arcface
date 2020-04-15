@@ -161,7 +161,8 @@ def extract_feature(conf, model, loader, tta=False):
             outputs = model(inputs.cuda())[1] + model(fliped.cuda())[1]
             feature = l2_norm(outputs).cpu()
         else:
-            feature = model(inputs.cuda())[1].cpu()
+            outputs = model(inputs.cuda())[0]
+            feature = l2_norm(outputs).cpu()
 
         features = torch.cat((features, feature), 0)
 

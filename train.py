@@ -1,5 +1,5 @@
 from config import get_config
-from Learner_tmp import face_learner
+from Learner_2l import face_learner
 import argparse
 import random
 import numpy as np

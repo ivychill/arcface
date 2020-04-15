@@ -65,44 +65,31 @@ def get_test_dataset(imgs_folder):
     return ds, class_num
 
 def get_test_loader(conf):
-    # query_ds, query_class_num = get_test_dataset(conf.data_path/'test'/'shanghai_cam_dynamic_3rd_112')
-    # gallery_ds, gallery_class_num = get_test_dataset(conf.data_path/'test'/'shanghai_cam_id_3rd_112')
-    # query_ds, query_class_num = get_test_dataset(conf.data_path/'test'/'query_ms')
-    # gallery_ds, gallery_class_num = get_test_dataset(conf.data_path/'test'/'gallery_ms')
-
-    # kc_id=conf.data_path/'test'/'kc_employee_id_112'
-    # kc_dynamic=conf.data_path/'test'/'kc_employee_dynamic_112'
-    # sh_id=conf.data_path/'test'/'shanghai_cam_id_112'
-    # sh_dynamic=conf.data_path/'test'/'shanghai_cam_dynamic_112'
-
-    # kc_id=conf.data_path/'test'/'gallery_ms'
-    # kc_dynamic=conf.data_path/'test'/'query_ms'
-    # sh_id=conf.data_path/'test'/'gallery_ms'
-    # sh_dynamic=conf.data_path/'test'/'query_ms'
-    
-    # kc_dynamic_ds, kc_dynamic_class_num = get_test_dataset(kc_dynamic)
-    # sh_dynamic_ds, sh_dynamic_class_num = get_test_dataset(sh_dynamic)
-    # for i,(url,label) in enumerate(sh_dynamic_ds.imgs):
-    #     sh_dynamic_ds.imgs[i] = (url, label + kc_dynamic_class_num)
-    # query_ds = ConcatDataset([kc_dynamic_ds, sh_dynamic_ds])
-    # query_class_num = kc_dynamic_class_num + sh_dynamic_class_num
-    #
-    # kc_id_ds, kc_id_class_num = get_test_dataset(kc_id)
-    # sh_id_ds, sh_id_class_num = get_test_dataset(sh_id)
-    # for i,(url,label) in enumerate(sh_id_ds.imgs):
-    #     sh_id_ds.imgs[i] = (url, label + kc_id_class_num)
-    # gallery_ds = ConcatDataset([kc_id_ds, sh_id_ds])
-    # gallery_class_num = kc_id_class_num + sh_id_class_num
-
-    sh_dynamic=conf.data_path/'test'/'q_shanghai_cam_dynamic_112_test_1k'
+    # sh_dynamic=conf.data_path/'test'/'shanghai_cam_dynamic_112_test_1k'
+    sh_dynamic=conf.data_path/'test'/'kc_employee_dynamic_112'
     sh_dynamic_ds, sh_dynamic_class_num = get_test_dataset(sh_dynamic)
     query_ds = sh_dynamic_ds
     query_class_num = sh_dynamic_class_num
 
-    sh_id=conf.data_path/'test'/'g_shanghai_cam_dynamic_112_test_1k'
+    # sh_id=conf.data_path/'test'/'shanghai_cam_id_112_test_1k'
+    sh_id=conf.data_path/'test'/'kc_employee_id_112'
     sh_id_ds, sh_id_class_num = get_test_dataset(sh_id)
-    gallery_ds = sh_id_ds
-    gallery_class_num = sh_id_class_num
+    db_id=conf.data_path/'test'/'10w_112'
+    db_id_ds, db_id_class_num = get_test_dataset(db_id)
+    for i,(url,label) in enumerate(db_id_ds.imgs):
+        db_id_ds.imgs[i] = (url, label + sh_id_class_num)
+    gallery_ds = ConcatDataset([sh_id_ds, db_id_ds])
+    gallery_class_num = sh_id_class_num + db_id_class_num
+
+    # sh_dynamic=conf.data_path/'test'/'q_shanghai_cam_dynamic_112_test_1k'
+    # sh_dynamic_ds, sh_dynamic_class_num = get_test_dataset(sh_dynamic)
+    # query_ds = sh_dynamic_ds
+    # query_class_num = sh_dynamic_class_num
+    #
+    # sh_id=conf.data_path/'test'/'g_shanghai_cam_dynamic_112_test_1k'
+    # sh_id_ds, sh_id_class_num = get_test_dataset(sh_id)
+    # gallery_ds = sh_id_ds
+    # gallery_class_num = sh_id_class_num
 
     loader = {}
     loader['query'] = {}
@@ -278,6 +265,7 @@ def get_train_loader(conf, data_mode, sample_identity=False):
     class_num, class_to_idx = find_classes(root)
     train_transform = trans.Compose([
         trans.RandomHorizontalFlip(),
+        trans.ColorJitter(brightness=0.2, contrast=0.15, saturation=0, hue=0),
         trans.ToTensor(),
         trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])

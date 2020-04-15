@@ -46,7 +46,7 @@ class face_learner(object):
             self.milestones = conf.milestones
             logger.info('loading data...')
             self.loader_arc, self.class_num_arc = get_train_loader(conf, 'emore', sample_identity=False)
-            self.loader_tri, self.class_num_tri = get_train_loader(conf, 'glint', sample_identity=True)
+            self.loader_tri, self.class_num_tri = get_train_loader(conf, 'emore', sample_identity=True)
 
             self.writer = SummaryWriter(conf.log_path)
             self.step = 0
@@ -71,14 +71,14 @@ class face_learner(object):
             # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=40, verbose=True)
 
             if conf.fp16:
-                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O2")
+                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O3")
                 self.model = DistributedDataParallel(self.model).cuda()
             else:
-                self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[conf.argsed]).cuda() #add line for distributed
+                self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[conf.argsed], find_unused_parameters=True).cuda() #add line for distributed
 
             self.board_loss_every = len(self.loader_arc)//100
-            self.evaluate_every = len(self.loader_arc)//4
-            self.save_every = len(self.loader_arc)//4
+            self.evaluate_every = len(self.loader_arc)//2
+            self.save_every = len(self.loader_arc)//2
             self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader_arc.dataset.root).parent)
         else:
             self.threshold = conf.threshold
@@ -311,7 +311,7 @@ class face_learner(object):
         # 断点加载训练
         if conf.resume:
             logger.debug('resume...')
-            self.load_state(conf, 'ir_se50.pth', from_save_folder=True)
+            self.load_state(conf, 'ir_se100.pth', from_save_folder=True)
 
         logger.debug('optimizer {}'.format(self.optimizer))
         for epoch in range(epochs):
@@ -359,8 +359,8 @@ class face_learner(object):
                     logger.debug('epoch {}, step {}, loss_arc {:.4f}, loss_tri {:.4f}, loss {:.4f}, acc {:.4f}'
                                  .format(epoch, self.step, loss_arc.item(), loss_tri.item(), loss.item(), accuracy))
                     self.model.train()
-                # if conf.local_rank == 0 and epoch >= 10 and self.step % self.save_every == 0 and self.step != 0:
-                if conf.local_rank == 0 and epoch >= 8 and self.step % self.save_every == 0 and self.step != 0:
+
+                if conf.local_rank == 0 and epoch >= 10 and self.step % self.save_every == 0 and self.step != 0:
                 # if conf.local_rank == 0 and self.step % self.save_every == 0 and self.step != 0:
                     self.save_state(conf, epoch, accuracy)
                     
