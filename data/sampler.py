@@ -51,6 +51,9 @@ class DistRandomIdentitySampler(Sampler):
                 num = self.num_instances
             self.length += num - num % self.num_instances
 
+        self.length = self.length//self.num_replicas
+        # logger.debug('virtual sampler length {}'.format(self.length))
+
     def __iter__(self):
         pids = copy.deepcopy(self.pids)
         random.shuffle(pids)
@@ -70,9 +73,9 @@ class DistRandomIdentitySampler(Sampler):
             img_len = len(idxs)
             len_list.append(img_len)
 
-        min_len = min(len_list)
-        final_idxs = final_idxs[:min_len]
-        self.length = len(final_idxs)
+        self.length = min(len_list)
+        # logger.debug('actual sampler length {}'.format(self.length))
+        final_idxs = final_idxs[:self.length]
         return iter(final_idxs)
 
     def gen_index_list(self, pids):

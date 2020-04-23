@@ -45,12 +45,10 @@ class face_learner(object):
         if not inference:
             self.milestones = conf.milestones
             logger.info('loading data...')
-            self.loader_arc, self.class_num_arc = get_train_loader(conf, 'emore', sample_identity=False)
             self.loader_tri, self.class_num_tri = get_train_loader(conf, 'emore', sample_identity=True)
 
             self.writer = SummaryWriter(conf.log_path)
             self.step = 0
-            self.head_arc = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num_arc).cuda()
             self.head_tri = Triplet().cuda()
             logger.debug('two model heads generated')
 
@@ -59,12 +57,12 @@ class face_learner(object):
             if conf.use_mobilfacenet:
                 self.optimizer = optim.SGD([
                                     {'params': paras_wo_bn[:-1], 'weight_decay': 4e-5},
-                                    {'params': [paras_wo_bn[-1]] + [self.head_arc.kernel], 'weight_decay': 4e-4},
+                                    {'params': [paras_wo_bn[-1]], 'weight_decay': 4e-4},
                                     {'params': paras_only_bn}
                                 ], lr = conf.lr, momentum = conf.momentum)
             else:
                 self.optimizer = optim.SGD([
-                                    {'params': paras_wo_bn + [self.head_arc.kernel], 'weight_decay': 5e-4},
+                                    {'params': paras_wo_bn, 'weight_decay': 5e-4},
                                     {'params': paras_only_bn}
                                 ], lr = conf.lr, momentum = conf.momentum)
             # self.optimizer = torch.nn.parallel.DistributedDataParallel(optimizer,device_ids=[conf.argsed])
@@ -76,10 +74,10 @@ class face_learner(object):
             else:
                 self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[conf.argsed], find_unused_parameters=True).cuda() #add line for distributed
 
-            self.board_loss_every = len(self.loader_arc)//100
-            self.evaluate_every = len(self.loader_arc)//2
-            self.save_every = len(self.loader_arc)//2
-            self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader_arc.dataset.root).parent)
+            self.board_loss_every = len(self.loader_tri)//100
+            self.evaluate_every = len(self.loader_tri)//2
+            self.save_every = len(self.loader_tri)//2
+            self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader_tri.dataset.root).parent)
         else:
             self.threshold = conf.threshold
             self.loader, self.query_ds, self.gallery_ds = get_test_loader(conf)
@@ -98,10 +96,6 @@ class face_learner(object):
                                      ('model_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
                                                                                    extra)))
         if not model_only:
-            torch.save(
-                self.head_arc.state_dict(), save_path /
-                                         ('head_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
-                                                                                       extra)))
             torch.save(
                 self.optimizer.state_dict(), save_path /
                                          ('optimizer_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
@@ -130,7 +124,6 @@ class face_learner(object):
             self.model.load_state_dict(self.load_network(conf, save_path / 'model_{}'.format(fixed_str)))
 
         if not model_only:
-            self.head_arc.load_state_dict(torch.load(save_path / 'head_{}'.format(fixed_str)))
             self.optimizer.load_state_dict(torch.load(save_path / 'optimizer_{}'.format(fixed_str)))
             logger.info('load optimizer {}'.format(self.optimizer))
             # amp.load_state_dict(torch.load(save_path / 'amp_{}'.format(fixed_str)))
@@ -247,66 +240,6 @@ class face_learner(object):
             xls_file.save(path_excel)
             row += 1
 
-
-    def find_lr(self,
-                conf,
-                init_value=1e-8,
-                final_value=10.,
-                beta=0.98,
-                bloding_scale=3.,
-                num=None):
-        if not num:
-            num = len(self.loader)
-        mult = (final_value / init_value)**(1 / num)
-        lr = init_value
-        for params in self.optimizer.param_groups:
-            params['lr'] = lr
-        self.model.train()
-        avg_loss = 0.
-        best_loss = 0.
-        batch_num = 0
-        losses = []
-        log_lrs = []
-        for i, (imgs, labels) in tqdm(enumerate(self.loader), total=num):
-
-            imgs = imgs.to(conf.device)
-            labels = labels.to(conf.device)
-            batch_num += 1          
-
-            self.optimizer.zero_grad()
-
-            embeddings = self.model(imgs)
-            thetas = self.head_arc(embeddings, labels)
-            loss = conf.ce_loss(thetas, labels)          
-          
-            #Compute the smoothed loss
-            avg_loss = beta * avg_loss + (1 - beta) * loss.item()
-            self.writer.add_scalar('avg_loss', avg_loss, batch_num)
-            smoothed_loss = avg_loss / (1 - beta**batch_num)
-            self.writer.add_scalar('smoothed_loss', smoothed_loss,batch_num)
-            #Stop if the loss is exploding
-            if batch_num > 1 and smoothed_loss > bloding_scale * best_loss:
-                print('exited with best_loss at {}'.format(best_loss))
-                plt.plot(log_lrs[10:-5], losses[10:-5])
-                return log_lrs, losses
-            #Record the best loss
-            if smoothed_loss < best_loss or batch_num == 1:
-                best_loss = smoothed_loss
-            #Store the values
-            losses.append(smoothed_loss)
-            log_lrs.append(math.log10(lr))
-            self.writer.add_scalar('log_lr', math.log10(lr), batch_num)
-
-            loss.backward()
-            self.optimizer.step()
-
-            lr *= mult
-            for params in self.optimizer.param_groups:
-                params['lr'] = lr
-            if batch_num > num:
-                plt.plot(log_lrs[10:-5], losses[10:-5])
-                return log_lrs, losses    
-
     def train(self, conf, epochs):
         self.model.train()
         # logger.debug('model {}'.format(self.model))
@@ -315,29 +248,20 @@ class face_learner(object):
         # 断点加载训练
         if conf.resume:
             logger.debug('resume...')
-            self.load_state(conf, '11.pth', from_save_folder=True)
+            self.load_state(conf, 'ir_se100.pth', from_save_folder=True)
 
         logger.debug('optimizer {}'.format(self.optimizer))
         for epoch in range(epochs):
             logger.debug('epoch {} started'.format(epoch))
-            for data_arc, data_tri in zip(tqdm(iter(self.loader_arc)), tqdm(iter(self.loader_tri))):
+            for data_tri in tqdm(iter(self.loader_tri)):
                 if self.step in self.milestones:
                     self.schedule_lr()
-                imgs_arc, labels_arc = data_arc
-                # logger.debug('labels_arc {}'.format(labels_arc))
                 imgs_tri, labels_tri = data_tri
-                # logger.debug('labels_tri {}'.format(labels_tri))
-                imgs_arc = imgs_arc.cuda()
-                labels_arc = labels_arc.cuda()
                 imgs_tri = imgs_tri.cuda()
                 labels_tri = labels_tri.cuda()
                 self.optimizer.zero_grad()
-                _, embeddings_arc = self.model(imgs_arc)
                 embeddings_tri, _ = self.model(imgs_tri)
-                thetas = self.head_arc(embeddings_arc, labels_arc)
-                loss_arc = conf.ce_loss(thetas, labels_arc)
-                loss_tri = self.head_tri(embeddings_tri, labels_tri)
-                loss = loss_arc + loss_tri
+                loss = self.head_tri(embeddings_tri, labels_tri)
                 if conf.fp16:  # we use optimier to backward loss
                     with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                         scaled_loss.backward()
@@ -360,8 +284,8 @@ class face_learner(object):
                     accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.cfp_fp, self.cfp_fp_issame)
                     self.board_val('cfp_fp', accuracy, best_threshold, roc_curve_tensor)
                     # logger.debug('optimizer {}'.format(self.optimizer))
-                    logger.debug('epoch {}, step {}, loss_arc {:.4f}, loss_tri {:.4f}, loss {:.4f}, acc {:.4f}'
-                                 .format(epoch, self.step, loss_arc.item(), loss_tri.item(), loss.item(), accuracy))
+                    logger.debug('epoch {}, step {}, loss {:.4f}, acc {:.4f}'
+                                 .format(epoch, self.step, loss.item(), accuracy))
                     self.model.train()
 
                 if conf.local_rank == 0 and epoch >= 10 and self.step % self.save_every == 0 and self.step != 0:

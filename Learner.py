@@ -89,6 +89,10 @@ class face_learner(object):
             save_path = conf.save_path
         else:
             save_path = conf.model_path
+
+        if not os.path.exists(save_path):
+            os.makedirs(save_path, exist_ok=True)
+
         torch.save(
             # self.model.state_dict(), save_path /
             #                          ('model_{}_accuracy:{}_step:{}_{}.pth'.format(get_time(), accuracy, self.step,
@@ -116,9 +120,8 @@ class face_learner(object):
             #                              ('amp_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
             #                                                                     extra)))
 
-
-    def load_network(self, save_path):
-        state_dict = torch.load(save_path)
+    def load_network(self, conf, save_path):
+        state_dict = torch.load(save_path, map_location='cuda:{}'.format(conf.local_rank))
         # create new OrderedDict that does not contain `module.`
         new_state_dict = OrderedDict()
         for k, v in state_dict.items():
@@ -135,9 +138,9 @@ class face_learner(object):
         else:
             save_path = conf.model_path
         if conf.resume:
-            self.model.load_state_dict(torch.load(save_path / 'model_{}'.format(fixed_str)))
+            self.model.load_state_dict(torch.load(save_path / 'model_{}'.format(fixed_str), map_location='cuda:{}'.format(conf.local_rank)))
         else:
-            self.model.load_state_dict(self.load_network(save_path / 'model_{}'.format(fixed_str)))
+            self.model.load_state_dict(self.load_network(conf, save_path / 'model_{}'.format(fixed_str)))
 
         if not model_only:
             self.head.load_state_dict(torch.load(save_path / 'head_{}'.format(fixed_str)))
