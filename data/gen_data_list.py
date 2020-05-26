@@ -131,14 +131,14 @@ if __name__ == '__main__':
     # remain_file = '32w_112.txt'
     # minus_by_file(base, src_dir, minus_dir, src_file, minus_file, remain_file)
 
-    # list_file = 'faces_emore.txt'
-    # dst_dir = 'faces_emore_16_per_peron/imgs'
-    # gen_dir_by_list(base, list_file, dst_dir)
+    list_file = 'faces_emore.txt'
+    dst_dir = 'faces_emore_16_per_peron/imgs'
+    gen_dir_by_list(base, list_file, dst_dir)
 
     # list_file = '32w_112.txt'
     # dst_dir = '32w_112'
     # gen_dir_per_person_by_list(base, list_file, dst_dir)
 
-    src_dir = 'test/32w_112'
-    dst_dir = 'train/faces_emore_plus_sh_32w/imgs'
-    mv(base, src_dir, dst_dir)
+    # src_dir = 'test/32w_112'
+    # dst_dir = 'train/faces_emore_plus_sh_32w/imgs'
+    # mv(base, src_dir, dst_dir)

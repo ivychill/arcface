@@ -96,7 +96,7 @@ def compute_rank1(distmat, max_index, q_pids, g_pids, threshold, data_path, err_
         else:
             miss += 1
 
-    logger.debug('threshold {:.2f}, acc {}, err {}, miss {}'.format(threshold, acc, err, miss))
+    logger.debug('threshold {:.3f}, acc {}, err {}, miss {}'.format(threshold, acc, err, miss))
     acc = acc/float(query_num)
     err = err/float(query_num)
     miss = miss/float(query_num)

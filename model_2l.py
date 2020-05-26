@@ -146,8 +146,9 @@ class Backbone(Module):
         self.output_layer = Sequential(BatchNorm2d(512),
                                        Dropout(drop_ratio),
                                        Flatten(),
-                                       Linear(512 * 7 * 7, 512))
-        self.bn_neck = BatchNorm1d(512)
+                                       Linear(512 * 7 * 7, 256))
+        self.bn_neck = BatchNorm1d(256)
+        # self.bn_neck = BatchNorm1d(128, affine=False)     # for dot_product
 
         modules = []
         for block in blocks:
@@ -165,6 +166,7 @@ class Backbone(Module):
         feature_arc = self.bn_neck(feature_tri)
         # return l2_norm(feature_tri), l2_norm(feature_arc)
         return feature_tri, l2_norm(feature_arc)
+        # return feature_tri, feature_arc     # for dot_product
 
 ##################################  MobileFaceNet #############################################################
     
@@ -268,7 +270,7 @@ class MobileFaceNet(Module):
 
 class Arcface(Module):
     # implementation of additive margin softmax loss in https://arxiv.org/abs/1801.05599    
-    def __init__(self, embedding_size=512, classnum=51332,  s=64., m=0.5):
+    def __init__(self, embedding_size=256, classnum=51332,  s=64., m=0.5):
         super(Arcface, self).__init__()
         self.classnum = classnum
         self.kernel = Parameter(torch.Tensor(embedding_size,classnum))
@@ -347,6 +349,19 @@ def euclidean_dist(x, y):
     return dist
 
 
+def dot_product_dist(x, y):
+    """
+    Args:
+      x: pytorch Variable, with shape [m, d]
+      y: pytorch Variable, with shape [n, d]
+    Returns:
+      dist: pytorch Variable, with shape [m, n]
+    """
+    dist = torch.mm(x, y.t())
+    dist = dist.clamp(min=1e-12)
+    return dist
+
+
 def hard_example_mining(dist_mat, labels, return_inds=False):
     """For each anchor, find the hardest positive and negative sample.
     Args:
@@ -417,6 +432,7 @@ class Triplet(Module):
 
     def forward(self, embbedings, label):
         dist_mat = euclidean_dist(embbedings, embbedings)
+        # dist_mat = dot_product_dist(embbedings, embbedings)
         dist_ap, dist_an = hard_example_mining(
             dist_mat, label)
         y = dist_an.new().resize_as_(dist_an).fill_(1)

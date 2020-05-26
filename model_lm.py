@@ -149,8 +149,8 @@ class Backbone(Module):
         self.output_layer = Sequential(BatchNorm2d(512),
                                        Dropout(drop_ratio),
                                        Flatten(),
-                                       Linear(512 * 7 * 7, 512),
-                                       BatchNorm1d(512))
+                                       Linear(512 * 7 * 7, 256),
+                                       BatchNorm1d(256))
         # self.output_layer = Sequential(BatchNorm2d(512),
         #                                Dropout(drop_ratio),
         #                                HybridPooling(),
@@ -273,7 +273,7 @@ class MobileFaceNet(Module):
 
 class Arcface(Module):
     # implementation of additive margin softmax loss in https://arxiv.org/abs/1801.05599    
-    def __init__(self, embedding_size=512, classnum=51332,  s=64., m=0.5):
+    def __init__(self, embedding_size=256, classnum=51332,  s=64., m=0.5):
         super(Arcface, self).__init__()
         self.classnum = classnum
         self.kernel = Parameter(torch.Tensor(embedding_size,classnum))

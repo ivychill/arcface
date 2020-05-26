@@ -69,13 +69,13 @@ class face_learner(object):
             # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=40, verbose=True)
 
             if conf.fp16:
-                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O3")
+                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O2")
                 self.model = DistributedDataParallel(self.model).cuda()
             else:
                 self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[conf.argsed], find_unused_parameters=True).cuda() #add line for distributed
 
             self.board_loss_every = len(self.loader_tri)//100
-            self.evaluate_every = len(self.loader_tri)//2
+            self.evaluate_every = len(self.loader_tri)//20
             self.save_every = len(self.loader_tri)//2
             self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader_tri.dataset.root).parent)
         else:
@@ -145,7 +145,7 @@ class face_learner(object):
                     emb_batch = self.model(batch.cuda())[1] + self.model(fliped.cuda())[1]
                     embeddings[idx:idx + conf.batch_size] = l2_norm(emb_batch).cpu()
                 else:
-                    embeddings[idx:idx + conf.batch_size] = self.model(batch.cuda())[1].cpu()
+                    embeddings[idx:idx + conf.batch_size] = l2_norm(self.model(batch.cuda())[1]).cpu()
                 idx += conf.batch_size
             if idx < len(carray):
                 batch = torch.tensor(carray[idx:])            
@@ -154,7 +154,7 @@ class face_learner(object):
                     emb_batch = self.model(batch.cuda())[1] + self.model(fliped.cuda())[1]
                     embeddings[idx:] = l2_norm(emb_batch)
                 else:
-                    embeddings[idx:] = self.model(batch.cuda())[1].cpu()
+                    embeddings[idx:] = l2_norm(self.model(batch.cuda())[1]).cpu()
         tpr, fpr, accuracy, best_thresholds = evaluate(embeddings, issame, nrof_folds)
         buf = gen_plot(fpr, tpr)
         roc_curve = Image.open(buf)
@@ -260,7 +260,8 @@ class face_learner(object):
                 imgs_tri = imgs_tri.cuda()
                 labels_tri = labels_tri.cuda()
                 self.optimizer.zero_grad()
-                embeddings_tri, _ = self.model(imgs_tri)
+                # embeddings_tri, _ = self.model(imgs_tri)
+                _, embeddings_tri = self.model(imgs_tri)
                 loss = self.head_tri(embeddings_tri, labels_tri)
                 if conf.fp16:  # we use optimier to backward loss
                     with amp.scale_loss(loss, self.optimizer) as scaled_loss:

@@ -1,11 +1,15 @@
-from torch.nn import Linear, Conv2d, BatchNorm1d, BatchNorm2d, PReLU, ReLU, Sigmoid, Dropout2d, Dropout, AvgPool2d, MaxPool2d, AdaptiveAvgPool2d, AdaptiveMaxPool2d, Sequential, Module, Parameter
+
 import torch.nn.functional as F
 import torch
+from torch import Tensor
+from torch.nn import Linear, Conv2d, BatchNorm1d, BatchNorm2d, PReLU, ReLU, Sigmoid, Dropout2d, Dropout, AvgPool2d, MaxPool2d, AdaptiveAvgPool2d, AdaptiveMaxPool2d, Sequential, Module, Parameter
 from collections import namedtuple
 import math
 import numpy as np
+from typing import Tuple
 import pdb
 from config import get_config
+from log import logger
 
 ##################################  Original Arcface Model #############################################################
 
@@ -167,6 +171,7 @@ class Backbone(Module):
         x = self.input_layer(x)
         x = self.body(x)
         x = self.output_layer(x)
+        # return x
         return l2_norm(x)
 
 ##################################  MobileFaceNet #############################################################
@@ -427,3 +432,92 @@ class Triplet(Module):
         else:
             loss = self.ranking_loss(dist_an - dist_ap, y)
         return loss, dist_ap, dist_an
+
+class Mse(Module):
+    """Modified from Tong Xiao's open-reid (https://github.com/Cysu/open-reid).
+    Related Triplet Loss theory can be found in paper 'In Defense of the Triplet
+    Loss for Person Re-Identification'."""
+
+    # 5 landmarks(x, y), thereof 10 coordinates
+    def __init__(self, embedding_size=512, landmark_coordinate_num = 10):
+        super(Mse, self).__init__()
+        self.linear = Linear(embedding_size, landmark_coordinate_num, bias=True)
+
+    def forward(self, embeddings, gt_landmarks):
+        landmarks = self.linear(embeddings)
+        loss_fn = torch.nn.MSELoss()
+        loss = loss_fn(landmarks, gt_landmarks)
+        return loss
+
+def convert_label_to_similarity(normed_feature: Tensor, label: Tensor) -> Tuple[Tensor, Tensor]:
+    similarity_matrix = normed_feature @ normed_feature.transpose(1, 0)
+    # logger.debug('similarity_matrix {}'.format(similarity_matrix))
+    label_matrix = label.unsqueeze(1) == label.unsqueeze(0)
+    positive_matrix = label_matrix.triu(diagonal=1)
+    # negative_matrix = label_matrix.logical_not().triu(diagonal=1)
+    negative_matrix = (~label_matrix).triu(diagonal=1)
+    similarity_matrix = similarity_matrix.view(-1)
+    positive_matrix = positive_matrix.view(-1)
+    # logger.debug('similarity_matrix[positive_matrix] {}'.format(similarity_matrix[positive_matrix]))
+    negative_matrix = negative_matrix.view(-1)
+    # logger.debug('similarity_matrix[negative_matrix] {}'.format(similarity_matrix[negative_matrix]))
+    return similarity_matrix[positive_matrix], similarity_matrix[negative_matrix]
+
+class CircleLoss(Module):
+    def __init__(self, m: float, gamma: float) -> None:
+        super(CircleLoss, self).__init__()
+        self.m = m
+        self.gamma = gamma
+        self.soft_plus = torch.nn.Softplus()
+
+    def forward(self, sp: Tensor, sn: Tensor) -> Tensor:
+        # ap = torch.clamp_min(- sp.detach() + 1 + self.m, min=0.)
+        # an = torch.clamp_min(sn.detach() + self.m, min=0.)
+        ap = torch.clamp_min(- sp + 1 + self.m, min=0.)
+        an = torch.clamp_min(sn + self.m, min=0.)
+
+        delta_p = 1 - self.m
+        delta_n = self.m
+
+        logit_p = - ap * (sp - delta_p) * self.gamma
+        logit_n = an * (sn - delta_n) * self.gamma
+
+        # loss = self.soft_plus(torch.logsumexp(logit_n, dim=0) + torch.logsumexp(logit_p, dim=0))
+        # loss = loss/self.gamma  # added by fengchen
+        loss_p = torch.sum(torch.exp(logit_p))
+        loss_n = torch.sum(torch.exp(logit_n))
+        loss = torch.log(1 + loss_p * loss_n)
+
+        return loss
+
+# class CircleLoss(Module):
+#     def __init__(self, scale=256, margin=0.25, similarity='cos', **kwargs):
+#         super(CircleLoss, self).__init__()
+#         self.scale = scale
+#         self.margin = margin
+#         self.similarity = similarity
+#
+#     def forward(self, feats, labels):
+#         m = labels.size(0)
+#         mask = labels.expand(m, m).t().eq(labels.expand(m, m)).float()
+#         pos_mask = mask.triu(diagonal=1)
+#         neg_mask = (mask - 1).abs_().triu(diagonal=1)
+#         if self.similarity == 'dot':
+#             sim_mat = torch.matmul(feats, torch.t(feats))
+#         elif self.similarity == 'cos':
+#             feats = F.normalize(feats)
+#             sim_mat = feats.mm(feats.t())
+#         else:
+#             raise ValueError('This similarity is not implemented.')
+#
+#         pos_pair_ = sim_mat[pos_mask == 1]
+#         neg_pair_ = sim_mat[neg_mask == 1]
+#
+#         alpha_p = torch.relu(-pos_pair_ + 1 + self.margin)
+#         alpha_n = torch.relu(neg_pair_ + self.margin)
+#         margin_p = 1 - self.margin
+#         margin_n = self.margin
+#         loss_p = torch.sum(torch.exp(-self.scale * alpha_p * (pos_pair_ - margin_p)))
+#         loss_n = torch.sum(torch.exp(self.scale * alpha_n * (neg_pair_ - margin_n)))
+#         loss = torch.log(1 + loss_p * loss_n)
+#         return loss

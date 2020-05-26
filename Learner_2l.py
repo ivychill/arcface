@@ -44,12 +44,13 @@ class face_learner(object):
             logger.debug('{}_{} model generated'.format(conf.net_mode, conf.net_depth))
         if not inference:
             self.milestones = conf.milestones
-            logger.info('loading data...')
-            self.loader_arc, self.class_num_arc = get_train_loader(conf, 'emore', sample_identity=False)
-            self.loader_tri, self.class_num_tri = get_train_loader(conf, 'emore', sample_identity=True)
-
             self.writer = SummaryWriter(conf.log_path)
             self.step = 0
+
+            logger.info('loading data...')
+            self.loader_arc, self.class_num_arc = get_train_loader(conf, 'emore', sample_identity=False)
+            self.loader_tri, self.class_num_tri = get_train_loader(conf, 'glint', sample_identity=True)
+
             self.head_arc = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num_arc).cuda()
             self.head_tri = Triplet().cuda()
             logger.debug('two model heads generated')
@@ -70,8 +71,13 @@ class face_learner(object):
             # self.optimizer = torch.nn.parallel.DistributedDataParallel(optimizer,device_ids=[conf.argsed])
             # self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, patience=40, verbose=True)
 
+            # 断点加载训练
+            if conf.resume:
+                logger.debug('resume...')
+                self.load_state(conf, 'last.pth', from_save_folder=True)
+
             if conf.fp16:
-                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O3")
+                self.model, self.optimizer = amp.initialize(self.model, self.optimizer, opt_level="O2")
                 self.model = DistributedDataParallel(self.model).cuda()
             else:
                 self.model = torch.nn.parallel.DistributedDataParallel(self.model, device_ids=[conf.argsed], find_unused_parameters=True).cuda() #add line for distributed
@@ -79,6 +85,7 @@ class face_learner(object):
             self.board_loss_every = len(self.loader_arc)//100
             self.evaluate_every = len(self.loader_arc)//2
             self.save_every = len(self.loader_arc)//2
+
             self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader_arc.dataset.root).parent)
         else:
             self.threshold = conf.threshold
@@ -108,7 +115,9 @@ class face_learner(object):
                                                                                 extra)))
 
     def load_network(self, conf, save_path):
-        state_dict = torch.load(save_path, map_location='cuda:{}'.format(conf.local_rank))
+        state_dict = torch.load(save_path)
+        # logger.debug('local_rank {}'.format(conf.local_rank))
+        # state_dict = torch.load(save_path, map_location='cuda:{}'.format(conf.local_rank))
         # create new OrderedDict that does not contain `module.`
         new_state_dict = OrderedDict()
         for k, v in state_dict.items():
@@ -124,10 +133,10 @@ class face_learner(object):
             save_path = conf.save_path
         else:
             save_path = conf.model_path
-        if conf.resume:
-            self.model.load_state_dict(torch.load(save_path / 'model_{}'.format(fixed_str), map_location='cuda:{}'.format(conf.local_rank)))
-        else:
-            self.model.load_state_dict(self.load_network(conf, save_path / 'model_{}'.format(fixed_str)))
+        # if conf.resume:
+        #     self.model.load_state_dict(torch.load(save_path / 'model_{}'.format(fixed_str), map_location='cuda:{}'.format(conf.local_rank)))
+        # else:
+        self.model.load_state_dict(self.load_network(conf, save_path / 'model_{}'.format(fixed_str)))
 
         if not model_only:
             self.head_arc.load_state_dict(torch.load(save_path / 'head_{}'.format(fixed_str)))
@@ -311,11 +320,6 @@ class face_learner(object):
         self.model.train()
         # logger.debug('model {}'.format(self.model))
         running_loss = 0.
-
-        # 断点加载训练
-        if conf.resume:
-            logger.debug('resume...')
-            self.load_state(conf, '11.pth', from_save_folder=True)
 
         logger.debug('optimizer {}'.format(self.optimizer))
         for epoch in range(epochs):

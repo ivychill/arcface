@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from data.data_pipe import de_preprocess, get_train_loader_from_txt, get_val_data, get_test_loader
-from model_lm import Backbone, Arcface, Mse, MobileFaceNet, Am_softmax, l2_norm
+from data.data_pipe import de_preprocess, get_train_loader, get_val_data, get_test_loader
+from model import Backbone, MobileFaceNet, convert_label_to_similarity, CircleLoss, l2_norm
 from verifacation import evaluate
 import torch
 from torch import optim
@@ -45,28 +45,23 @@ class face_learner(object):
         if not inference:
             self.milestones = conf.milestones
             logger.info('loading data...')
-            self.loader, self.class_num = get_train_loader_from_txt(conf, 'emore', sample_identity=False)
+            self.loader, self.class_num = get_train_loader(conf, 'emore', sample_identity=True)
 
             self.writer = SummaryWriter(conf.log_path)
             self.step = 0
-            self.head = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num).cuda()
-            self.head_lm = Mse(embedding_size=conf.embedding_size).cuda()
-
-            logger.debug('two model heads generated')
+            self.head = CircleLoss(m=0.25, gamma=256.0).cuda()
 
             paras_only_bn, paras_wo_bn = separate_bn_paras(self.model)
 
             if conf.use_mobilfacenet:
                 self.optimizer = optim.SGD([
                                     {'params': paras_wo_bn[:-1], 'weight_decay': 4e-5},
-                                    {'params': [paras_wo_bn[-1]] + [self.head.kernel], 'weight_decay': 4e-4},
-                                    {'params': self.head_lm.parameters(), 'weight_decay': 4e-4},
+                                    {'params': [paras_wo_bn[-1]], 'weight_decay': 4e-4},
                                     {'params': paras_only_bn}
                                 ], lr = conf.lr, momentum = conf.momentum)
             else:
                 self.optimizer = optim.SGD([
-                                    {'params': paras_wo_bn + [self.head.kernel], 'weight_decay': 5e-4},
-                                    {'params': self.head_lm.parameters(), 'weight_decay': 5e-4},
+                                    {'params': paras_wo_bn, 'weight_decay': 5e-4},
                                     {'params': paras_only_bn}
                                 ], lr = conf.lr, momentum = conf.momentum)
             # self.optimizer = torch.nn.parallel.DistributedDataParallel(optimizer,device_ids=[conf.argsed])
@@ -105,10 +100,6 @@ class face_learner(object):
                                          ('head_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
                                                                                        extra)))
             torch.save(
-                self.head_lm.state_dict(), save_path /
-                                         ('head_lm_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
-                                                                                       extra)))
-            torch.save(
                 self.optimizer.state_dict(), save_path /
                                          ('optimizer_{}_{}_acc:{:.4f}_{}.pth'.format(epoch, self.step, accuracy,
                                                                                 extra)))
@@ -137,7 +128,6 @@ class face_learner(object):
 
         if not model_only:
             self.head.load_state_dict(torch.load(save_path / 'head_{}'.format(fixed_str)))
-            self.head_lm.load_state_dict(torch.load(save_path / 'head_lm_{}'.format(fixed_str)))
             self.optimizer.load_state_dict(torch.load(save_path / 'optimizer_{}'.format(fixed_str)))
             logger.info('load optimizer {}'.format(self.optimizer))
 
@@ -185,7 +175,7 @@ class face_learner(object):
                       torch.pow(gf, 2).sum(dim=1, keepdim=True).expand(n, m).t()
             distmat.addmm_(1, -2, qf, gf.t())
             distmat = distmat.cpu().numpy()
-            return distmat
+            return distmat# embeddings[idx:idx + conf.batch_size] = l2_norm(emb_batch).cpu()
 
         def distance(emb1, emb2):
             diff = np.subtract(emb1, emb2)
@@ -266,24 +256,18 @@ class face_learner(object):
         logger.debug('optimizer {}'.format(self.optimizer))
         for epoch in range(epochs):
             logger.debug('epoch {} started'.format(epoch))
-            for imgs, labels, gt_landmarks in tqdm(iter(self.loader)):
+            for imgs, labels in tqdm(iter(self.loader)):
                 if self.step in self.milestones:
                     self.schedule_lr()
                 imgs = imgs.cuda()
                 labels = labels.cuda()
-                gt_landmarks = torch.stack(gt_landmarks)
-                # logger.debug('gt_landmarks {} {} {}'.format(type(gt_landmarks), gt_landmarks.size(), gt_landmarks))
-                gt_landmarks = gt_landmarks.transpose(0,1)
-                # logger.debug('gt_landmarks {} {} {}'.format(type(gt_landmarks), gt_landmarks.size(), gt_landmarks))
-                gt_landmarks = gt_landmarks.float().cuda()
+
                 self.optimizer.zero_grad()
                 embeddings = self.model(imgs)
-                thetas = self.head(l2_norm(embeddings), labels)
-                loss_arc = conf.ce_loss(thetas, labels)
-                loss_mse = self.head_lm(embeddings, gt_landmarks) * 0.1
-                loss = loss_arc + loss_mse
+                inp_sp, inp_sn = convert_label_to_similarity(l2_norm(embeddings), labels)
+                loss = self.head(inp_sp, inp_sn)
+                # loss = self.head(embeddings, labels)
 
-                # loss.backward()
                 if conf.fp16:  # we use optimier to backward loss
                     with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                         scaled_loss.backward()
@@ -291,7 +275,6 @@ class face_learner(object):
                     loss.backward()
 
                 running_loss += loss.item()
-                # print(loss.item())
                 self.optimizer.step()
                 
                 if self.step % self.board_loss_every == 0 and self.step != 0: #comment line
@@ -306,8 +289,8 @@ class face_learner(object):
                     self.board_val('lfw', accuracy, best_threshold, roc_curve_tensor)
                     accuracy, best_threshold, roc_curve_tensor = self.evaluate(conf, self.cfp_fp, self.cfp_fp_issame)
                     self.board_val('cfp_fp', accuracy, best_threshold, roc_curve_tensor)
-                    logger.debug('epoch {}, step {}, loss_arc {:.4f}, loss_mse {:.4f}, loss {:.4f}, acc {:.4f}'
-                                 .format(epoch, self.step, loss_arc.item(), loss_mse.item(), loss.item(), accuracy))
+                    logger.debug('epoch {}, step {}, loss {:.4f}, acc {:.4f}'
+                                 .format(epoch, self.step, loss.item(), accuracy))
                     self.model.train()
                 if conf.local_rank == 0 and epoch >= 10 and self.step % self.save_every == 0 and self.step != 0:
                 # if conf.local_rank == 0 and self.step % self.save_every == 0 and self.step != 0:
