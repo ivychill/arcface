@@ -111,8 +111,8 @@ def mv(base, src_dir, dst_dir):
         move(base/src_dir/person, base/dst_dir/person)
 
 if __name__ == '__main__':
-    base = Path('/srv/dataset')
-    # base = Path('/home/kcadmin/user/fengchen/face/dataset/train')
+    # base = Path('/srv/dataset')
+    base = Path('/home/kcadmin/user/fengchen/face/dataset/train')
     # src_dir = 'shanghai_cam_dynamic_112'
     # dst_file = 'shanghai_cam_dynamic_112.txt'
     # gen_list_by_dir(base, src_dir, dst_file)

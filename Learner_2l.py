@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from data.data_pipe import de_preprocess, get_train_loader, get_val_data, get_test_loader
+from data.data_pipe import de_preprocess, get_train_loader, get_train_loader_concat, get_val_data, get_test_loader
 from model_2l import Backbone, Arcface, MobileFaceNet, Triplet, l2_norm
 from verifacation import evaluate
 import torch
@@ -49,7 +49,10 @@ class face_learner(object):
 
             logger.info('loading data...')
             self.loader_arc, self.class_num_arc = get_train_loader(conf, 'emore', sample_identity=False)
-            self.loader_tri, self.class_num_tri = get_train_loader(conf, 'glint', sample_identity=True)
+            # self.loader_tri, self.class_num_tri = get_train_loader(conf, 'glint', sample_identity=True)
+            emore_root = conf.data_path/'train'/'faces_emore_16_per_peron'/'imgs'
+            kc_root = conf.data_path/'test'/'kc_employee_dynamic_112'
+            self.loader_tri, self.class_num_tri = get_train_loader_concat(conf, [emore_root, kc_root], sample_identity=True)
 
             self.head_arc = Arcface(embedding_size=conf.embedding_size, classnum=self.class_num_arc).cuda()
             self.head_tri = Triplet().cuda()
@@ -86,7 +89,8 @@ class face_learner(object):
             self.evaluate_every = len(self.loader_arc)//2
             self.save_every = len(self.loader_arc)//2
 
-            self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader_arc.dataset.root).parent)
+            # self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(Path(self.loader_arc.dataset.root).parent)
+            self.agedb_30, self.cfp_fp, self.lfw, self.agedb_30_issame, self.cfp_fp_issame, self.lfw_issame = get_val_data(conf.emore_folder)
         else:
             self.threshold = conf.threshold
             self.loader, self.query_ds, self.gallery_ds = get_test_loader(conf)

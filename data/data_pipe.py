@@ -200,7 +200,7 @@ def find_classes(dir):
     return len(classes), class_to_idx
 
 def make_dataset(dir, class_to_idx, extensions):
-    images = []
+    images = [] # (path, label)
     dir = os.path.expanduser(dir)
     for target in sorted(os.listdir(dir)):
         d = os.path.join(dir, target)
@@ -232,10 +232,11 @@ def read_image(img_path):
     return img
     
 class ImageDataset(Dataset):
-    def __init__(self, root, class_to_idx, transform=None):
-        self.root = root
-        extensions = ['.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif']
-        dataset = make_dataset(root, class_to_idx, extensions)
+    # def __init__(self, root, class_to_idx, transform=None):
+    #     self.root = root
+    #     extensions = ['.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif']
+    #     dataset = make_dataset(root, class_to_idx, extensions)
+    def __init__(self, dataset, transform=None):
         self.dataset = dataset
         self.transform = transform
 
@@ -328,13 +329,45 @@ def get_train_loader(conf, data_mode, sample_identity=False):
         trans.ToTensor(),
         trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
     ])
-    dataset = ImageDataset(root, class_to_idx, train_transform)
+
+    extensions = ['.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif']
+    path_ds = make_dataset(root, class_to_idx, extensions)
+    dataset = ImageDataset(path_ds, train_transform)
+
     if sample_identity:
         train_sampler = DistRandomIdentitySampler(dataset.dataset, conf.batch_size, conf.num_instances)
     else:
         train_sampler = distributed.DistributedSampler(dataset)
     loader = DataLoader(dataset, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers, sampler = train_sampler)
     return loader, class_num
+
+def get_train_loader_concat(conf, data_roots, sample_identity=False):
+    extensions = ['.jpg', '.jpeg', '.png', '.ppm', '.bmp', '.pgm', '.tif']
+    total_class_num = 0
+    datasets = []
+    for root in data_roots:
+        class_num, class_to_idx = find_classes(root)
+        train_transform = trans.Compose([
+            trans.RandomHorizontalFlip(),
+            trans.ColorJitter(brightness=0.2, contrast=0.15, saturation=0, hue=0),
+            trans.ToTensor(),
+            trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        ])
+
+        path_ds = make_dataset(root, class_to_idx, extensions)
+        for i, (url, label) in enumerate(path_ds):
+            path_ds[i] = (url, label + total_class_num)
+        datasets.extend(path_ds)
+        total_class_num += class_num
+
+    # logger.debug('datasets {}'.format(datasets))
+    image_ds = ImageDataset(datasets, train_transform)
+    if sample_identity:
+        train_sampler = DistRandomIdentitySampler(image_ds.dataset, conf.batch_size, conf.num_instances)
+    else:
+        train_sampler = distributed.DistributedSampler(image_ds)
+    loader = DataLoader(image_ds, batch_size=conf.batch_size, shuffle=False, pin_memory=conf.pin_memory, num_workers=conf.num_workers, sampler = train_sampler)
+    return loader, total_class_num
 
 def get_train_loader_from_txt(conf, data_mode, sample_identity=False):
     if data_mode == 'emore':
